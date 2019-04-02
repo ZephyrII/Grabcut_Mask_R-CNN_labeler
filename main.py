@@ -3,6 +3,44 @@ import argparse
 import os
 import numpy as np
 
+from Detector import Detector
+
+camera_matrix = np.array([[1929.14559, 0, 1924.38974],
+                          [0, 1924.07499, 1100.54838],
+                          [0, 0, 1]])
+camera_distortion = (-0.25591, 0.07370, 0.00017, -0.00002)
+
+class GUI:
+    def __init__(self, path_to_model):
+        cv2.namedWindow('Detector', 0)
+        self.path_to_model = path_to_model
+        self.frame_no = 0
+
+    def run_video(self, video_capture):
+        ret, frame = video_capture.read()
+        detector = Detector(frame.shape, self.path_to_model, camera_matrix)
+        while True:
+            k = cv2.waitKey(30)
+            if k == ord('q'):
+                break
+            self.frame_no += 1
+            if k == ord('n'):
+                video_capture.set(cv2.CAP_PROP_POS_MSEC, video_capture.get(cv2.CAP_PROP_POS_MSEC)+5000)
+            if k == ord('b'):
+                video_capture.set(cv2.CAP_PROP_POS_MSEC, video_capture.get(cv2.CAP_PROP_POS_MSEC)-5000)
+            if k == ord(' '):
+                cv2.waitKey(0)
+            if frame is not None:
+                # img_yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                # img_yuv[:, :, 2] = cv2.equalizeHist(img_yuv[:, :, 2])
+                # frame = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
+                frame = cv2.undistort(frame, camera_matrix, camera_distortion)
+                detector.detect(frame)
+                cv2.imshow('Detector', frame)
+            ret, frame = video_capture.read()
+
+        video_capture.release()
+
 class GUI:
     def __init__(self, vid_filename, output_directory):
         self.vid_filename = vid_filename
@@ -14,6 +52,8 @@ class GUI:
         self.alpha = 0.7
         self.poly = []
         self.free_mode = False
+        self.detector = Detector(frame.shape, self.path_to_model, camera_matrix)
+
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
         cv2.createTrackbar('Alpha', 'Mask labeler', 7, 10, self.update_alpha)
@@ -29,6 +69,8 @@ class GUI:
         cv2.imshow("Mask labeler", imm)
 
     def run(self, img):
+        frame = cv2.undistort(img, camera_matrix, camera_distortion)
+        self.detector.detect(frame)
         self.frame_no += 1
         self.frame = img
         if self.overlay is None:
