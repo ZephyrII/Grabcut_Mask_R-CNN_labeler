@@ -1,4 +1,4 @@
-import cv2
+from cv2 import cv2
 import argparse
 import os
 import numpy as np

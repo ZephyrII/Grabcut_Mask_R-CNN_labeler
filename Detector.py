@@ -2,19 +2,22 @@ from utils.app_utils import draw_boxes_and_labels
 import tensorflow as tf
 import numpy as np
 import cv2
-
+try:
+    from cv2 import cv2
+except ImportError:
+    pass
 
 class Detector:
 
-    def __init__(self, shape, path_to_model, camera_matrix):
+    def __init__(self, frame, path_to_model, camera_matrix):
         self.init_det = True
-        self.frame_shape = shape
+        self.frame_shape = frame.shape
         self.slice_size = (720, 960)
         self.offset = (0, 0)
         self.detections = []
         self.best_detection = None
 
-        self.moving_avg_image = np.full(shape[:2], 100, dtype=np.uint8)
+        self.moving_avg_image = np.full(self.frame_shape[:2], 100, dtype=np.uint8)
 
         self.detection_graph = tf.Graph()
         with self.detection_graph.as_default():
@@ -48,11 +51,15 @@ class Detector:
             scores=np.squeeze(scores),
             min_score_thresh=.3
         )
+        ma_alpha = 0.1
         for rp, cs, ma in zip(rect_points, class_scores, masks[0]):
             abs_xmin = int(rp['xmin'] * self.slice_size[1] + self.offset[1])
             abs_ymin = int(rp['ymin'] * self.slice_size[0] + self.offset[0])
             abs_xmax = int(rp['xmax'] * self.slice_size[1] + self.offset[1])
             abs_ymax = int(rp['ymax'] * self.slice_size[0] + self.offset[0])
+            ma_overlay = np.zeros(self.frame_shape[:2], dtype=np.uint8)
+            ma_overlay[abs_ymin:abs_ymax, abs_xmin:abs_xmax] = cs[0]
+            self.moving_avg_image = cv2.addWeighted(ma_overlay, ma_alpha, self.moving_avg_image, 1-ma_alpha, 0)
             self.detections.append(
                 dict(rel_rect=rp, score=cs, abs_rect=(abs_xmin, abs_ymin, abs_xmax, abs_ymax), mask=ma))
 
@@ -66,7 +73,7 @@ class Detector:
 
         if len(self.detections) == 0:
             self.init_det = True
-            return
+            return None, None
         else:
             self.init_det = False
             self.refine_detections()
@@ -91,7 +98,8 @@ class Detector:
         for idx, det in enumerate(self.detections):
             x1, y1, x2, y2 = det['abs_rect']
             ma_score = np.mean(self.moving_avg_image[y1:y2, x1:x2])
-            self.detections[idx]['refined_score'] = ma_score + self.detections[idx]['score']
+            print(len(self.detections))
+            self.detections[idx]['refined_score'] = 3 * ma_score + self.detections[idx]['score']
         self.best_detection = sorted(self.detections, key=lambda k: k['refined_score'], reverse=True)[0]
         x1, y1, x2, y2 = self.best_detection['abs_rect']
         y_off = int(np.max((0, y1 - self.slice_size[0] / 2)))
@@ -99,13 +107,13 @@ class Detector:
         self.offset = (y_off, x_off)
 
     def draw_detection(self, frame):
-        full_mask = np.full(self.frame_shape[:2], cv2.GC_PR_BGD, dtype=np.uint8)
+        full_mask = np.full(self.frame_shape[:2], cv2.GC_BGD, dtype=np.uint8)
         if self.best_detection is None:
             return full_mask[0:self.slice_size[0], 0:self.slice_size[1]]
         x1, y1, x2, y2 = self.best_detection['abs_rect']
         mask = self.best_detection['mask']
         mask_reshaped = cv2.resize(mask, dsize=(x2 - x1, y2 - y1))
-        mask_reshaped = np.where(mask_reshaped > 0.5, cv2.GC_PR_FGD, cv2.GC_PR_BGD)
+        mask_reshaped = np.where(mask_reshaped > 0.5, cv2.GC_FGD, cv2.GC_BGD)
         full_mask[y1:y2, x1:x2] = mask_reshaped
         return full_mask[self.offset[0]:self.offset[0] + self.slice_size[0],
                          self.offset[1]:self.offset[1] + self.slice_size[1]], \

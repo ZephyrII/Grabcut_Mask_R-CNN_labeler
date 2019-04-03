@@ -1,4 +1,8 @@
 import cv2
+try:
+    from cv2 import cv2
+except ImportError:
+    pass
 import numpy as np
 from Detector import Detector
 import os
@@ -9,20 +13,22 @@ camera_matrix = np.array([[1929.14559, 0, 1924.38974],
 camera_distortion = (-0.25591, 0.07370, 0.00017, -0.00002)
 
 class GUI:
-    def __init__(self, path_to_model, output_directory):
+    def __init__(self, path_to_model, output_directory, vid_filename):
+        self.vid_filename = vid_filename
+        self.output_directory = output_directory
         self.mouse_pressed = False
         self.mask = None
         self.overlay = None
         self.frame = None
+        self.init_offset = None
         self.label = 1
         self.alpha = 0.7
         self.brush_size = 2
+
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
         cv2.createTrackbar('Alpha', 'Mask labeler', 7, 10, self.update_alpha)
         cv2.createTrackbar('Brush size', 'Mask labeler', 2, 10, self.update_brush)
-        switch = '0 : Background \n1 : Foreground'
-        cv2.createTrackbar(switch, 'Mask labeler', 1, 1, self.update_label)
         if not os.path.exists(os.path.join(output_directory, 'images')):
             os.makedirs(os.path.join(output_directory, 'images'))
         if not os.path.exists(os.path.join(output_directory, 'labels')):
@@ -34,28 +40,36 @@ class GUI:
 
     def update_alpha(self, x):
         self.alpha = x/10
-        imm = cv2.addWeighted(cv2.cvtColor(self.overlay, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
+        self.overlay = self.mask
+        self.overlay = np.where(self.overlay == cv2.GC_PR_BGD, 0, self.overlay)
+        imm = cv2.addWeighted(cv2.cvtColor(self.overlay * 255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
                               1 - self.alpha, 0)
         cv2.imshow("Mask labeler", imm)
 
     def update_brush(self, x):
         self.brush_size = x
 
-    def update_label(self, x):
-        self.label = x
-
     def run_video(self, video_capture):
         ret, frame = video_capture.read()
-        detector = Detector(frame.shape, self.path_to_model, camera_matrix)
+        detector = Detector(frame, self.path_to_model, camera_matrix)
         while True:
             if frame is not None:
                 # img_yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
                 # img_yuv[:, :, 2] = cv2.equalizeHist(img_yuv[:, :, 2])
                 # frame = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
                 frame = cv2.undistort(frame, camera_matrix, camera_distortion)
+                cv2.imshow('Mask labeler', frame)
+                # if self.init_offset is None:
+                #     cv2.waitKey(0)
+                #     continue
+                # elif detector.init_det:
+                #     detector.offset = self.init_offset
+                #     detector.init_det = False
                 self.mask, self.frame = detector.detect(frame)
+                if self.mask is None:
+                    continue
                 self.overlay = self.mask
-                self.overlay = np.where(self.overlay==cv2.GC_PR_BGD, 0, self.overlay)
+                # self.overlay = np.where(self.overlay==cv2.GC_PR_BGD, 0, self.overlay)
                 imm = cv2.addWeighted(cv2.cvtColor(self.overlay*255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
                                       1 - self.alpha, 0)
                 cv2.imshow("Mask labeler", imm)
@@ -67,42 +81,50 @@ class GUI:
                 video_capture.set(cv2.CAP_PROP_POS_MSEC, video_capture.get(cv2.CAP_PROP_POS_MSEC) + 5000)
             if k == ord('b'):
                 video_capture.set(cv2.CAP_PROP_POS_MSEC, video_capture.get(cv2.CAP_PROP_POS_MSEC) - 5000)
+            if k == ord(' '):
+                self.save()
+                ma_alpha = 0.9
+                overlay = np.zeros(frame.shape[:2], dtype=np.uint8)
+                overlay[detector.offset[0]:detector.offset[0] + detector.slice_size[0], detector.offset[1]:detector.offset[1] + detector.slice_size[1]] = self.overlay*100
+                detector.moving_avg_image = cv2.addWeighted(detector.moving_avg_image, ma_alpha, overlay.astype(np.uint8), 1 - ma_alpha, 0, detector.moving_avg_image)
+                # cv2.imshow("lol", detector.moving_avg_image)
             ret, frame = video_capture.read()
 
         video_capture.release()
 
     def video_click(self, e, x, y, flags, param):
-            if e == cv2.EVENT_MBUTTONDOWN:
+            if e == cv2.EVENT_RBUTTONDOWN:
                 self.mouse_pressed = True
-            if e == cv2.EVENT_MBUTTONUP:
+                self.label = 0
+            if e == cv2.EVENT_RBUTTONUP:
                 self.mouse_pressed = False
             if e == cv2.EVENT_LBUTTONDOWN:
+                # if self.init_offset is not None:
                 self.mouse_pressed = True
+                self.label = 1
+                # self.mask[y-self.brush_size:y + self.brush_size, x-self.brush_size:x +self.brush_size] = self.label+2
                 self.mask[y:y + self.brush_size, x:x + +self.brush_size] = self.label
                 self.overlay = self.mask
-                self.overlay = np.where(self.overlay==cv2.GC_PR_BGD, 0, self.overlay)
-                imm = cv2.addWeighted(cv2.cvtColor(self.overlay*255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
-                                      1 - self.alpha, 0)
-            elif e == cv2.EVENT_LBUTTONUP:
-                self.mouse_pressed = False
-                self.mask = self.grabcut.refine_grabcut(self.frame, self.mask)
-                self.overlay = self.mask
-                self.overlay = np.where(self.overlay==cv2.GC_PR_BGD, 0, self.overlay)
+                # self.overlay = np.where(self.overlay==cv2.GC_PR_BGD, 0, self.overlay)
                 imm = cv2.addWeighted(cv2.cvtColor(self.overlay*255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
                                       1 - self.alpha, 0)
                 cv2.imshow("Mask labeler", imm)
+            elif e == cv2.EVENT_LBUTTONUP:
+                self.mouse_pressed = False
+
             elif e == cv2.EVENT_MOUSEMOVE:
                 if self.mouse_pressed:
-                    self.mask[y:y + self.brush_size, x:x + +self.brush_size] = self.label
+                    # self.mask[y-self.brush_size:y + self.brush_size, x-self.brush_size:x +self.brush_size] = self.label+2
+                    self.mask[y:y + self.brush_size, x:x +self.brush_size] = self.label
                     self.overlay = self.mask
-                    self.overlay = np.where(self.overlay == cv2.GC_PR_BGD, 0, self.overlay)
+                    # self.overlay = np.where(self.overlay == cv2.GC_PR_BGD, 0, self.overlay)
                     imm = cv2.addWeighted(cv2.cvtColor(self.overlay* 255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
                                           1 - self.alpha, 0)
                     cv2.imshow("Mask labeler", imm)
     def save(self):
         if self.mask is not None:
             label_mask = np.copy(self.mask)
-            label_mask[label_mask != cv2.GC_FGD] = 0
+            # label_mask[label_mask > cv2.GC_FGD] = 0
             label_fname = os.path.join(self.output_directory, "labels", self.vid_filename[:-4] +"_"+ str(self.frame_no) + "_label.jpg")
             cv2.imwrite(label_fname, label_mask)
             img_fname = os.path.join(self.output_directory, "images", self.vid_filename[:-4] +"_"+ str(self.frame_no) + ".jpg")
@@ -122,7 +144,7 @@ class Grabcut:
     #     return mask2[:, :, np.newaxis]
 
     def refine_grabcut(self, frame, mask):
-        mask, bgdModel, fgdModel = cv2.grabCut(frame, mask, None, self.bgdModel, self.fgdModel, 5,
+        mask, bgdModel, fgdModel = cv2.grabCut(frame, mask, None, self.bgdModel, self.fgdModel, 15,
                                                cv2.GC_INIT_WITH_MASK)
         # mask2 = np.where((mask == 2) | (mask == 0), 0, 255).astype('uint8')
         return mask
