@@ -2,10 +2,12 @@ from utils.app_utils import draw_boxes_and_labels
 import tensorflow as tf
 import numpy as np
 import cv2
+
 try:
     from cv2 import cv2
 except ImportError:
     pass
+
 
 class Detector:
 
@@ -55,11 +57,13 @@ class Detector:
         for rp, cs, ma in zip(rect_points, class_scores, masks[0]):
             abs_xmin = int(rp['xmin'] * self.slice_size[1] + self.offset[1])
             abs_ymin = int(rp['ymin'] * self.slice_size[0] + self.offset[0])
-            abs_xmax = int(rp['xmax'] * self.slice_size[1] + self.offset[1])
-            abs_ymax = int(rp['ymax'] * self.slice_size[0] + self.offset[0])
+            abs_xmax = np.min((int(rp['xmax'] * self.slice_size[1] + self.offset[1]), self.frame_shape[1]))
+            abs_ymax = np.min((int(rp['ymax'] * self.slice_size[0] + self.offset[0]), self.frame_shape[0]))
+            if abs_xmax <= abs_xmin or abs_ymax <= abs_ymin:
+                continue
             ma_overlay = np.zeros(self.frame_shape[:2], dtype=np.uint8)
             ma_overlay[abs_ymin:abs_ymax, abs_xmin:abs_xmax] = cs[0]
-            self.moving_avg_image = cv2.addWeighted(ma_overlay, ma_alpha, self.moving_avg_image, 1-ma_alpha, 0)
+            self.moving_avg_image = cv2.addWeighted(ma_overlay, ma_alpha, self.moving_avg_image, 1 - ma_alpha, 0)
             self.detections.append(
                 dict(rel_rect=rp, score=cs, abs_rect=(abs_xmin, abs_ymin, abs_xmax, abs_ymax), mask=ma))
 
@@ -98,7 +102,6 @@ class Detector:
         for idx, det in enumerate(self.detections):
             x1, y1, x2, y2 = det['abs_rect']
             ma_score = np.mean(self.moving_avg_image[y1:y2, x1:x2])
-            print(len(self.detections))
             self.detections[idx]['refined_score'] = 3 * ma_score + self.detections[idx]['score']
         self.best_detection = sorted(self.detections, key=lambda k: k['refined_score'], reverse=True)[0]
         x1, y1, x2, y2 = self.best_detection['abs_rect']
@@ -112,10 +115,11 @@ class Detector:
             return full_mask[0:self.slice_size[0], 0:self.slice_size[1]]
         x1, y1, x2, y2 = self.best_detection['abs_rect']
         mask = self.best_detection['mask']
+        print(self.best_detection['abs_rect'])
         mask_reshaped = cv2.resize(mask, dsize=(x2 - x1, y2 - y1))
         mask_reshaped = np.where(mask_reshaped > 0.5, cv2.GC_FGD, cv2.GC_BGD)
         full_mask[y1:y2, x1:x2] = mask_reshaped
         return full_mask[self.offset[0]:self.offset[0] + self.slice_size[0],
-                         self.offset[1]:self.offset[1] + self.slice_size[1]], \
+               self.offset[1]:self.offset[1] + self.slice_size[1]], \
                frame[self.offset[0]:self.offset[0] + self.slice_size[0],
-                     self.offset[1]:self.offset[1] + self.slice_size[1]]
+               self.offset[1]:self.offset[1] + self.slice_size[1]]

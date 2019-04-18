@@ -1,9 +1,10 @@
-import os
 import cv2
-try:
-    from cv2 import cv2
-except ImportError:
-    pass
+# from cv2 import cv2
+# try:
+#     pass
+# except ImportError:
+#     pass
+import os
 import argparse
 from GUI import GUI
 
@@ -16,7 +17,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     vid_filename = args.video_input.split('/')[-1]
 
-    path_to_model = os.path.join("/root/share/tf/Mask/model/2.04/", 'frozen_inference_graph.pb')
+    path_to_model = os.path.join("/root/share/tf/Mask/model/8.04/", 'frozen_inference_graph.pb')
     video_capture = cv2.VideoCapture(args.video_input)
-    gui = GUI(path_to_model, args.output_directory, vid_filename)
-    gui.run_video(video_capture)
+    gui = GUI(path_to_model, args.output_directory, vid_filename, video_capture)
+    gui.run_video()
