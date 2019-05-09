@@ -27,7 +27,7 @@ class GUI:
         self.alpha = 0.4
         self.brush_size = 4
         self.video_capture = video_capture
-        self.video_capture.set(cv2.CAP_PROP_POS_FRAMES,  0)
+        self.video_capture.set(cv2.CAP_PROP_POS_MSEC, 200*1000)
         self.path_to_model = path_to_model
         self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
         self.grabcut = Grabcut()
@@ -104,7 +104,9 @@ class GUI:
                 self.video_capture.set(cv2.CAP_PROP_POS_FRAMES,  self.frame_no + 3)
             if k == ord(' '):
                 if len(self.kp) != 6:
-                    print("SELECT KEYPOINTS!")
+                    print("SELECT KEYPOINTS!", len(self.kp))
+                    self.show_warning_window("SELECT KEYPOINTS!")
+                    self.kp = []
                     continue
                 self.save()
                 self.video_capture.set(cv2.CAP_PROP_POS_FRAMES,  self.frame_no + 3)
@@ -116,6 +118,12 @@ class GUI:
             ret, frame = self.video_capture.read()
 
         self.video_capture.release()
+
+
+    def show_warning_window(self, message):
+        img = np.zeros((200, 600, 3))
+        cv2.putText(img, message, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255))
+        cv2.imshow("Warning", img)
 
     def show_mask(self):
         self.overlay = self.mask
@@ -198,8 +206,8 @@ class GUI:
         ET.SubElement(bndbox, 'xmax').text = str(xmax)
         ET.SubElement(bndbox, 'ymax').text = str(ymax)
         keypoints = ET.SubElement(object, 'keypoints')
-        for kp in keypoints_list:
-            xml_kp = ET.SubElement(keypoints, 'keypoint')
+        for i, kp in enumerate(keypoints_list):
+            xml_kp = ET.SubElement(keypoints, 'keypoint'+str(i))
             ET.SubElement(xml_kp, 'x').text = str(kp[0])
             ET.SubElement(xml_kp, 'y').text = str(kp[1])
         return ET.tostring(ann, encoding='unicode', method='xml')
