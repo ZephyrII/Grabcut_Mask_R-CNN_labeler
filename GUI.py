@@ -30,7 +30,6 @@ class GUI:
         self.video_capture.set(cv2.CAP_PROP_POS_MSEC, 200*1000)
         self.path_to_model = path_to_model
         self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
-        self.grabcut = Grabcut()
 
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
@@ -66,12 +65,6 @@ class GUI:
                 # frame = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
                 frame = cv2.undistort(frame, camera_matrix, camera_distortion)
                 cv2.imshow('Mask labeler', frame)
-                # if self.init_offset is None:
-                #     cv2.waitKey(0)
-                #     continue
-                # elif detector.init_det:
-                #     detector.offset = self.init_offset
-                #     detector.init_det = False
                 self.mask, self.frame = detector.detect(frame)
                 if self.mask is None:
                     continue
@@ -141,29 +134,21 @@ class GUI:
             if e == cv2.EVENT_RBUTTONDOWN:
                 self.kp.append((x,y))
             if e == cv2.EVENT_LBUTTONDOWN:
-                # if self.init_offset is not None:
                 self.mouse_pressed = True
                 self.label = 1
-                # self.mask[y-self.brush_size:y + self.brush_size, x-self.brush_size:x +self.brush_size] = self.label+2
                 cv2.circle(self.mask, (x, y), self.brush_size,  self.label, thickness=-1)
-                # self.mask[y:y + self.brush_size, x:x + +self.brush_size] = self.label
                 self.show_mask()
             elif e == cv2.EVENT_LBUTTONUP:
                 self.mouse_pressed = False
-
             elif e == cv2.EVENT_MOUSEMOVE:
                 if self.mouse_pressed:
-                    # self.mask[y-self.brush_size:y + self.brush_size, x-self.brush_size:x +self.brush_size] = self.label+2
                     cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
-                    # self.mask[y:y + self.brush_size, x:x +self.brush_size] = self.label
                     self.show_mask()
 
     def save(self):
         if self.mask is not None:
             label_mask = np.copy(self.mask)
             mask_coords = np.argwhere(label_mask == 1)
-
-            # label_mask[label_mask > cv2.GC_FGD] = 0
             label_fname = os.path.join(self.output_directory, "labels", self.vid_filename[:-4] +"_"+ str(int(self.frame_no)) + "_label.jpg")
             cv2.imwrite(label_fname, label_mask)
             img_fname = os.path.join(self.output_directory, "images", self.vid_filename[:-4] +"_"+ str(int(self.frame_no)) + ".jpg")
@@ -172,7 +157,6 @@ class GUI:
             with open(ann_fname, 'w') as f:
                 f.write(self.makeXml(mask_coords, self.kp, "charger", self.frame.shape[1], self.frame.shape[0], ann_fname))
             self.kp = []
-            # self.poly = []
             print("Saved", label_fname)
 
     def makeXml(self, mask_coords, keypoints_list,  className, imgWidth, imgHeigth, filename):
@@ -211,21 +195,4 @@ class GUI:
             ET.SubElement(xml_kp, 'x').text = str(kp[0])
             ET.SubElement(xml_kp, 'y').text = str(kp[1])
         return ET.tostring(ann, encoding='unicode', method='xml')
-
-class Grabcut:
-    def __init__(self):
-        self.bgdModel = np.zeros((1, 65), np.float64)
-        self.fgdModel = np.zeros((1, 65), np.float64)
-
-    # def mask_rect(self, rect):
-    #     self.mask = np.full(self.frame.shape[:2], 0, np.uint8)
-    #     cv2.grabCut(self.frame, self.mask, rect, self.bgdModel, self.fgdModel, 5, cv2.GC_INIT_WITH_RECT)
-    #     mask2 = np.where((self.mask == 2) | (self.mask == 0), 0, 255).astype('uint8')
-    #     return mask2[:, :, np.newaxis]
-
-    def refine_grabcut(self, frame, mask):
-        mask, bgdModel, fgdModel = cv2.grabCut(frame, mask, None, self.bgdModel, self.fgdModel, 15,
-                                               cv2.GC_INIT_WITH_MASK)
-        # mask2 = np.where((mask == 2) | (mask == 0), 0, 255).astype('uint8')
-        return mask
 
