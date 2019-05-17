@@ -11,7 +11,7 @@ from GUI import GUI
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-vid', '--video-input', dest="video_input", type=str,
-                        default='/root/share/tf/videos/GH010350.MP4')
+                        default='/root/share/tf/videos/GH010351.MP4')
     parser.add_argument('-img', '--image_directory', dest='image_directory', type=str)
     parser.add_argument('-out', '--output_directory', dest='output_directory', type=str)
     args = parser.parse_args()

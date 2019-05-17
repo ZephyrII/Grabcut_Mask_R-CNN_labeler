@@ -14,7 +14,7 @@ class Detector:
     def __init__(self, frame, path_to_model, camera_matrix):
         self.init_det = True
         self.frame_shape = frame.shape
-        self.slice_size = (720, 960)
+        self.slice_size = (1080, 1440) #(720, 960)
         self.offset = (0, 0)
         self.detections = []
         self.best_detection = None
@@ -106,7 +106,7 @@ class Detector:
         self.best_detection = sorted(self.detections, key=lambda k: k['refined_score'], reverse=True)[0]
         x1, y1, x2, y2 = self.best_detection['abs_rect']
         y_off = int(np.max((0, y1 - self.slice_size[0] / 2)))
-        x_off = int(np.max((0, x1 - self.slice_size[1] / 2)))
+        x_off = int(np.max((0, x1*1.2 - self.slice_size[1] / 2)))
         self.offset = (y_off, x_off)
 
     def draw_detection(self, frame):

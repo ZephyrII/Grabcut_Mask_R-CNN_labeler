@@ -6,7 +6,6 @@ except ImportError:
 import numpy as np
 from Detector import Detector
 import os
-import xml.etree.ElementTree as ET
 
 camera_matrix = np.array([[1929.14559, 0, 1924.38974],
                           [0, 1924.07499, 1100.54838],
@@ -19,7 +18,6 @@ class GUI:
         self.output_directory = output_directory
         self.mouse_pressed = False
         self.mask = None
-        self.kp = []
         self.overlay = None
         self.frame = None
         self.init_offset = None
@@ -27,10 +25,9 @@ class GUI:
         self.alpha = 0.4
         self.brush_size = 4
         self.video_capture = video_capture
-        self.video_capture.set(cv2.CAP_PROP_POS_MSEC, 200*1000)
+        self.video_capture.set(cv2.CAP_PROP_POS_MSEC, 2*1000)
         self.path_to_model = path_to_model
         self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
-        self.grabcut = Grabcut()
 
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
@@ -66,12 +63,6 @@ class GUI:
                 # frame = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
                 frame = cv2.undistort(frame, camera_matrix, camera_distortion)
                 cv2.imshow('Mask labeler', frame)
-                # if self.init_offset is None:
-                #     cv2.waitKey(0)
-                #     continue
-                # elif detector.init_det:
-                #     detector.offset = self.init_offset
-                #     detector.init_det = False
                 self.mask, self.frame = detector.detect(frame)
                 if self.mask is None:
                     continue
@@ -103,18 +94,12 @@ class GUI:
             if k == ord('s'):
                 self.video_capture.set(cv2.CAP_PROP_POS_FRAMES,  self.frame_no + 3)
             if k == ord(' '):
-                if len(self.kp) != 6:
-                    print("SELECT KEYPOINTS!", len(self.kp))
-                    self.show_warning_window("SELECT KEYPOINTS!")
-                    self.kp = []
-                    continue
                 self.save()
                 self.video_capture.set(cv2.CAP_PROP_POS_FRAMES,  self.frame_no + 3)
                 ma_alpha = 0.9
                 overlay = np.zeros(frame.shape[:2], dtype=np.uint8)
                 overlay[detector.offset[0]:detector.offset[0] + detector.slice_size[0], detector.offset[1]:detector.offset[1] + detector.slice_size[1]] = self.overlay*100
                 detector.moving_avg_image = cv2.addWeighted(detector.moving_avg_image, ma_alpha, overlay.astype(np.uint8), 1 - ma_alpha, 0, detector.moving_avg_image)
-                # cv2.imshow("lol", detector.moving_avg_image)
             ret, frame = self.video_capture.read()
 
         self.video_capture.release()
@@ -133,99 +118,35 @@ class GUI:
 
     def video_click(self, e, x, y, flags, param):
             if e == cv2.EVENT_MBUTTONDOWN:
-                self.mouse_pressed = True
-                self.label = 0
-                cv2.circle(self.mask, (x, y), self.brush_size,  self.label, thickness=-1)
+                pass
             if e == cv2.EVENT_MBUTTONUP:
                 self.mouse_pressed = False
             if e == cv2.EVENT_RBUTTONDOWN:
-                self.kp.append((x,y))
+                self.mouse_pressed = True
+                self.label = 0
+                cv2.circle(self.mask, (x, y), self.brush_size,  self.label, thickness=-1)
+            if e == cv2.EVENT_RBUTTONUP:
+                self.mouse_pressed = False
             if e == cv2.EVENT_LBUTTONDOWN:
                 # if self.init_offset is not None:
                 self.mouse_pressed = True
                 self.label = 1
-                # self.mask[y-self.brush_size:y + self.brush_size, x-self.brush_size:x +self.brush_size] = self.label+2
                 cv2.circle(self.mask, (x, y), self.brush_size,  self.label, thickness=-1)
-                # self.mask[y:y + self.brush_size, x:x + +self.brush_size] = self.label
                 self.show_mask()
             elif e == cv2.EVENT_LBUTTONUP:
                 self.mouse_pressed = False
-
             elif e == cv2.EVENT_MOUSEMOVE:
                 if self.mouse_pressed:
-                    # self.mask[y-self.brush_size:y + self.brush_size, x-self.brush_size:x +self.brush_size] = self.label+2
                     cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
-                    # self.mask[y:y + self.brush_size, x:x +self.brush_size] = self.label
                     self.show_mask()
 
     def save(self):
         if self.mask is not None:
             label_mask = np.copy(self.mask)
-            mask_coords = np.argwhere(label_mask == 1)
-
-            # label_mask[label_mask > cv2.GC_FGD] = 0
             label_fname = os.path.join(self.output_directory, "labels", self.vid_filename[:-4] +"_"+ str(int(self.frame_no)) + "_label.jpg")
             cv2.imwrite(label_fname, label_mask)
             img_fname = os.path.join(self.output_directory, "images", self.vid_filename[:-4] +"_"+ str(int(self.frame_no)) + ".jpg")
             cv2.imwrite(img_fname, self.frame)
-            ann_fname = os.path.join(self.output_directory, "annotations", self.vid_filename[:-4] +"_"+ str(int(self.frame_no)) + ".txt")
-            with open(ann_fname, 'w') as f:
-                f.write(self.makeXml(mask_coords, self.kp, "charger", self.frame.shape[1], self.frame.shape[0], ann_fname))
-            self.kp = []
-            # self.poly = []
             print("Saved", label_fname)
 
-    def makeXml(self, mask_coords, keypoints_list,  className, imgWidth, imgHeigth, filename):
-        rel_xmin = np.min(mask_coords[:, 1])
-        rel_ymin = np.min(mask_coords[:, 0])
-        rel_xmax = np.max(mask_coords[:, 1])
-        rel_ymax = np.max(mask_coords[:, 0])
-        xmin = rel_xmin / imgWidth
-        ymin = rel_ymin / imgHeigth
-        xmax = rel_xmax / imgWidth
-        ymax = rel_ymax / imgHeigth
-        ann = ET.Element('annotation')
-        ET.SubElement(ann, 'folder').text = 'images'
-        ET.SubElement(ann, 'filename').text = filename + ".jpg"
-        ET.SubElement(ann, 'path')
-        source = ET.SubElement(ann, 'source')
-        ET.SubElement(source, 'database').text = "Unknown"
-        size = ET.SubElement(ann, 'size')
-        ET.SubElement(size, 'width').text = str(imgWidth)
-        ET.SubElement(size, 'height').text = str(imgHeigth)
-        ET.SubElement(size, 'depth').text = "3"
-        ET.SubElement(ann, 'segmented').text = "0"
-        object = ET.SubElement(ann, 'object')
-        ET.SubElement(object, 'name').text = className
-        ET.SubElement(object, 'pose').text = "Unspecified"
-        ET.SubElement(object, 'truncated').text = "0"
-        ET.SubElement(object, 'difficult').text = "0"
-        bndbox = ET.SubElement(object, 'bndbox')
-        ET.SubElement(bndbox, 'xmin').text = str(xmin)
-        ET.SubElement(bndbox, 'ymin').text = str(ymin)
-        ET.SubElement(bndbox, 'xmax').text = str(xmax)
-        ET.SubElement(bndbox, 'ymax').text = str(ymax)
-        keypoints = ET.SubElement(object, 'keypoints')
-        for i, kp in enumerate(keypoints_list):
-            xml_kp = ET.SubElement(keypoints, 'keypoint'+str(i))
-            ET.SubElement(xml_kp, 'x').text = str(kp[0])
-            ET.SubElement(xml_kp, 'y').text = str(kp[1])
-        return ET.tostring(ann, encoding='unicode', method='xml')
-
-class Grabcut:
-    def __init__(self):
-        self.bgdModel = np.zeros((1, 65), np.float64)
-        self.fgdModel = np.zeros((1, 65), np.float64)
-
-    # def mask_rect(self, rect):
-    #     self.mask = np.full(self.frame.shape[:2], 0, np.uint8)
-    #     cv2.grabCut(self.frame, self.mask, rect, self.bgdModel, self.fgdModel, 5, cv2.GC_INIT_WITH_RECT)
-    #     mask2 = np.where((self.mask == 2) | (self.mask == 0), 0, 255).astype('uint8')
-    #     return mask2[:, :, np.newaxis]
-
-    def refine_grabcut(self, frame, mask):
-        mask, bgdModel, fgdModel = cv2.grabCut(frame, mask, None, self.bgdModel, self.fgdModel, 15,
-                                               cv2.GC_INIT_WITH_MASK)
-        # mask2 = np.where((mask == 2) | (mask == 0), 0, 255).astype('uint8')
-        return mask
 
