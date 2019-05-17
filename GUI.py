@@ -30,6 +30,7 @@ class GUI:
         self.images_dir = images_dir
         self.images = iter(os.listdir(self.images_dir))
         self.path_to_model = path_to_model
+        self.fname = None
 
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
@@ -55,9 +56,9 @@ class GUI:
 
     def next_img(self):
         try:
-            fname = os.path.join(self.images_dir, next(self.images))
-            print(fname)
-            self.frame = cv2.imread(fname)
+            self.fname = next(self.images)
+            print(os.path.join(self.images_dir, self.fname))
+            self.frame = cv2.imread(os.path.join(self.images_dir, self.fname))
         except StopIteration:
             exit(0)
 
@@ -81,36 +82,32 @@ class GUI:
                 # self.mask, self.frame = detector.detect(frame)
                 self.show_mask(self.mask, self.overlay)
             else:
-                # frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
-                last_frame_no = self.frame_no
-                cnt = 1
-                while self.frame_no - last_frame_no == 0:
-                    self.images_dir.set(cv2.CAP_PROP_POS_FRAMES, self.frame_no + cnt)
-                    last_frame_no = self.images_dir.get(cv2.CAP_PROP_POS_FRAMES)
-                    cnt += 1
-                    print(self.frame_no, last_frame_no, cnt)
-                ret, self.frame = self.images_dir.read()
                 continue
             k = cv2.waitKey(0)
             if k == ord('q'):
                 break
             if k == ord('r'):
-                self.poly_1 = self.poly_2 = []
-                self.mask = np.zeros(self.frame.shape[:2], dtype=np.uint8)
-                self.overlay = np.zeros_like(self.frame)
+                self.reset_labels()
                 self.show_mask(self.mask, self.overlay)
+            if k == ord('c'):
+                self.poly_1 = []
+                self.poly_2 = []
             if k == ord('s'):
                 self.save()
                 self.next_img()
+            if k == ord('n'):
+                self.next_img()
+                self.reset_labels()
+                self.show_mask(self.mask, self.overlay)
             if k == ord(' '):
                 if len(self.poly_1) > 2:
                     cv2.polylines(self.overlay, np.array(self.poly_1, dtype=np.int32)[np.newaxis, :, :], isClosed=True,
-                                  color=(0, 255, 0), thickness=5)
+                                  color=(0, 0, 255), thickness=5)
                     cv2.fillPoly(self.mask, np.array(self.poly_1, dtype=np.int32)[np.newaxis, :, :], 1)
                 if len(self.poly_2) > 2:
                     cv2.polylines(self.overlay, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], isClosed=True,
-                                  color=(255, 0, 0), thickness=5)
-                    cv2.fillPoly(self.mask, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], 1)
+                                  color=(0, 255, 0), thickness=5)
+                    cv2.fillPoly(self.mask, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], 2)
                 self.poly_2 = []
                 self.poly_1 = []
                 self.show_mask(self.mask, self.overlay)
@@ -144,12 +141,12 @@ class GUI:
                 mask = np.zeros(self.frame.shape[:2], dtype=np.uint8)
                 overlay = np.zeros_like(self.frame)
                 cv2.polylines(overlay, np.array(self.poly_1, dtype=np.int32)[np.newaxis, :, :], isClosed=True,
-                              color=(0, 255, 0), thickness=5)
-                cv2.fillPoly(mask, np.array(self.poly_1, dtype=np.int32)[np.newaxis, :, :], 1)
+                              color=(0, 0, 255), thickness=5)
+                cv2.fillPoly(mask, np.array(self.poly_1, dtype=np.int32)[np.newaxis, :, :], color=1)
                 if len(self.poly_2) > 0:
-                    cv2.fillPoly(mask, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], 2)
+                    cv2.fillPoly(mask, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], color=2)
                     cv2.polylines(overlay, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], isClosed=True,
-                                  color=(255, 0, 0), thickness=5)
+                                  color=(0, 255, 0), thickness=5)
                 mask = cv2.addWeighted(mask, 0.5, self.mask, 0.5, 0)
                 overlay = cv2.addWeighted(overlay, 0.5, self.overlay, 0.5, 0)
                 self.show_mask(mask, overlay)
@@ -159,12 +156,12 @@ class GUI:
                 mask = np.zeros(self.frame.shape[:2], dtype=np.uint8)
                 overlay = np.zeros_like(self.frame)
                 cv2.polylines(overlay, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], isClosed=True,
-                              color=(255, 0, 0), thickness=5)
-                cv2.fillPoly(mask, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], 2)
+                              color=(0, 255, 0), thickness=5)
+                cv2.fillPoly(mask, np.array(self.poly_2, dtype=np.int32)[np.newaxis, :, :], color=2)
                 if len(self.poly_1) > 0:
-                    cv2.fillPoly(mask, np.array(self.poly_1, dtype=np.int32)[np.newaxis, :, :], 1)
+                    cv2.fillPoly(mask, np.array(self.poly_1, dtype=np.int32)[np.newaxis, :, :], color=1)
                     cv2.polylines(overlay, np.array(self.poly_1, dtype=np.int32)[np.newaxis, :, :], isClosed=True,
-                                  color=(0, 255, 0), thickness=5)
+                                  color=(0, 0, 255), thickness=5)
                 mask = cv2.addWeighted(mask, 0.5, self.mask, 0.5, 0)
                 overlay = cv2.addWeighted(overlay, 0.5, self.overlay, 0.5, 0)
                 self.show_mask(mask, overlay)
@@ -176,13 +173,15 @@ class GUI:
     def save(self):
         if self.mask is not None:
             label_mask = np.copy(self.mask)
-            label_fname = os.path.join(self.output_directory, "labels",
-                                       self.dataset_name[:-4] + "_" + str(int(self.frame_no)) + "_label.jpg")
+            label_fname = os.path.join(self.output_directory, self.fname[:-4] + "_labelTrainIds.png")
             cv2.imwrite(label_fname, label_mask)
-            img_fname = os.path.join(self.output_directory, "images",
-                                     self.dataset_name[:-4] + "_" + str(int(self.frame_no)) + ".jpg")
+            img_fname = os.path.join(self.output_directory, self.fname[:-4] + "_leftImg8bit.png")
             cv2.imwrite(img_fname, self.frame)
-            self.poly_1 = self.poly_2 = []
-            self.mask = np.zeros(self.frame.shape[:2], dtype=np.uint8)
-            self.overlay = np.zeros_like(self.frame)
+            self.reset_labels()
             print("Saved", label_fname)
+
+    def reset_labels(self):
+        self.poly_1 = []
+        self.poly_2 = []
+        self.mask = np.zeros(self.frame.shape[:2], dtype=np.uint8)
+        self.overlay = np.zeros_like(self.frame)
