@@ -14,7 +14,7 @@ class Detector:
     def __init__(self, frame, path_to_model, camera_matrix):
         self.init_det = True
         self.frame_shape = frame.shape
-        self.slice_size = (720, 960)
+        self.slice_size = (600,600)#(720, 960)
         self.offset = (0, 0)
         self.detections = []
         self.best_detection = None

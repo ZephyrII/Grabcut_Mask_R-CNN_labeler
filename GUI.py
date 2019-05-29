@@ -26,7 +26,7 @@ class GUI:
         self.alpha = 0.4
         self.brush_size = 4
         self.video_capture = video_capture
-        # self.video_capture.set(cv2.CAP_PROP_POS_MSEC, 200 * 1000)
+        self.video_capture.set(cv2.CAP_PROP_POS_MSEC, 0 * 1000)
         self.path_to_model = path_to_model
         self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
         self.camera_matrix = np.array([[1929.14559, 0, 1924.38974],
@@ -57,10 +57,10 @@ class GUI:
 
     def run_video(self):
         ret, frame = self.video_capture.read()
+        detector = Detector(frame, self.path_to_model, self.camera_matrix)
         while True:
             self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
             if frame is not None:
-                detector = Detector(frame, self.path_to_model, self.camera_matrix)
                 # img_yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
                 # img_yuv[:, :, 2] = cv2.equalizeHist(img_yuv[:, :, 2])
                 # frame = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
@@ -175,24 +175,26 @@ class GUI:
         if self.mask is not None:
             label_mask = np.copy(self.mask)
             mask_coords = np.argwhere(label_mask == 1)
-            center = (np.mean(mask_coords[:, 0]), np.mean(mask_coords[:, 1]))
+            center = (np.mean(mask_coords[:, 1]), np.mean(mask_coords[:, 0]))
 
             label_fname = os.path.join(self.output_directory, "labels",
-                                       self.vid_filename[:-4] + "_" + str(int(self.frame_no)) + "_label.jpg")
+                                       self.vid_filename[:-4] + "_" + "{:06d}".format(int(self.frame_no)) + "_label.jpg")
             cv2.imwrite(label_fname, label_mask)
             img_fname = os.path.join(self.output_directory, "images",
-                                     self.vid_filename[:-4] + "_" + str(int(self.frame_no)) + ".jpg")
+                                     self.vid_filename[:-4] + "_" + "{:06d}".format(int(self.frame_no)) + ".jpg")
             cv2.imwrite(img_fname, self.frame)
             ann_fname = os.path.join(self.output_directory, "annotations",
-                                     self.vid_filename[:-4] + "_" + str(int(self.frame_no)) + ".mat")
+                                     self.vid_filename[:-4] + "_" + "{:06d}".format(int(self.frame_no)) + ".mat")
             pose = self.apriltag_pose(self.frame)
             if pose is not None:
                 self.save_metadata(center, pose, ann_fname)
+                with open(os.path.join(self.output_directory, "train.txt"), 'a') as f:
+                    f.write(self.vid_filename[:-4] + "_" + "{:06d}\n".format(int(self.frame_no)))
                 print("Saved", label_fname)
             else:
                 print("AprilTag pose is None")
 
     def save_metadata(self, center, pose, filename):
-        results = {'center': np.expand_dims(center, -1), 'cls_indexes': [1], 'factor_depth': 1, 'intrinsics_matrix': self.camera_matrix,
-                   'poses': np.expand_dims(pose[:3], -1), 'rotation_translation_matrix': np.zeros((3, 4)), 'vertmap': np.zeros((0, 0, 3))}
+        results = {'center': np.expand_dims(center, 0), 'cls_indexes': [1], 'factor_depth': 1, 'intrinsics_matrix': self.camera_matrix,
+                   'poses': np.expand_dims(pose[:3], 2), 'rotation_translation_matrix': np.identity(4)[:3, :], 'vertmap': np.zeros((0, 0, 3))}
         scipy.io.savemat(filename, results, do_compression=True)
