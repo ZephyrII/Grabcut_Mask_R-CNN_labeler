@@ -76,8 +76,9 @@ class Detector:
             self.get_CNN_output(self.get_slice(frame))
 
         if len(self.detections) == 0:
+            print('NO DETECTIONS')
             self.init_det = True
-            return None, None
+            return None, frame
         else:
             self.init_det = False
             self.refine_detections()
