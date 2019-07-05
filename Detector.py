@@ -77,7 +77,7 @@ class Detector:
 
         if len(self.detections) == 0:
             self.init_det = True
-            return None, None
+            return None, frame
         else:
             self.init_det = False
             self.refine_detections()
@@ -88,10 +88,12 @@ class Detector:
                self.offset[1]:self.offset[1] + self.slice_size[1]]
 
     def init_detection(self, frame):
+        rows = 6
+        cols = 7
         y_start = np.random.random_integers(0, self.slice_size[0] / 2)
         x_start = np.random.random_integers(0, self.slice_size[1] / 2)
-        y_step = self.slice_size[0] - int((4 * self.slice_size[0] - self.frame_shape[0]) / (4 - 1))
-        x_step = self.slice_size[1] - int((5 * self.slice_size[1] - self.frame_shape[1]) / (5 - 1))
+        y_step = self.slice_size[0] - int((rows * self.slice_size[0] - self.frame_shape[0]) / (rows - 1))
+        x_step = self.slice_size[1] - int((cols * self.slice_size[1] - self.frame_shape[1]) / (cols - 1))
         for y_off in range(y_start, self.frame_shape[0] - y_step, y_step):
             for x_off in range(x_start, self.frame_shape[1] - x_step, x_step):
                 self.offset = (y_off, x_off)
@@ -105,8 +107,8 @@ class Detector:
             self.detections[idx]['refined_score'] = 3 * ma_score + self.detections[idx]['score']
         self.best_detection = sorted(self.detections, key=lambda k: k['refined_score'], reverse=True)[0]
         x1, y1, x2, y2 = self.best_detection['abs_rect']
-        y_off = int(np.max((0, y1 - self.slice_size[0] / 2)))
-        x_off = int(np.max((0, x1 - self.slice_size[1] / 2)))
+        y_off = int(np.min((np.max((0, y1 - self.slice_size[0] / 2)), self.frame_shape[1]-self.slice_size[1])))
+        x_off = int(np.min((np.max((0, x1 - self.slice_size[1] / 2)), self.frame_shape[0]-self.slice_size[0])))
         self.offset = (y_off, x_off)
 
     def draw_detection(self, frame):
