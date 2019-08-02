@@ -10,12 +10,14 @@ class VideoReader(DataReader):
         self.video_capture = cv2.VideoCapture(self.data_path)
         self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
         self.frame = None
+        self.fname = str(int(self.frame_no))+self.data_path.split('/')[-1]
+        print(self.fname)
         self.forward_n_frames(start_frame)
         self.frame_shape = (int(self.video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)),
                             int(self.video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)))
 
     def next_frame(self):
-        self.frame = self.video_capture.read()
+        ret, self.frame = self.video_capture.read()
         if self.frame is None:
             last_frame_no = self.frame_no
             cnt = 1
@@ -24,7 +26,7 @@ class VideoReader(DataReader):
                 last_frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
                 cnt += 1
                 print(self.frame_no, last_frame_no, cnt)
-            self.frame = self.video_capture.read()
+            ret, self.frame = self.video_capture.read()
 
         if self.equalize_histogram:
             img_yuv = cv2.cvtColor(self.frame, cv2.COLOR_BGR2HSV)
@@ -33,6 +35,7 @@ class VideoReader(DataReader):
             self.frame = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
 
         self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
+        self.fname = str(int(self.frame_no))+self.data_path.split('/')[-1]
         return self.frame
 
     def forward_n_frames(self, n):

@@ -8,6 +8,13 @@ from Detector import Detector
 import os
 import xml.etree.ElementTree as ET
 from ImageReader import ImageReader
+from VideoReader import VideoReader
+
+# camera_matrix = np.array([[678.17, 0, 642.47],
+#                           [0, 678.48, 511.00],
+#                           [0, 0, 1]])
+# camera_distortion = (-0.030122, 0.03641, 0.001298, -0.00111)
+
 # camera_matrix = np.array([[1929.14559, 0, 1924.38974],
 #                           [0, 1924.07499, 1100.54838],
 #                           [0, 0, 1]])
@@ -16,26 +23,18 @@ from ImageReader import ImageReader
 camera_matrix = np.array([[5008.72, 0, 2771.21],
                           [0, 5018.43, 1722.90],
                           [0, 0, 1]])
-camera_distortion = (-0.11017, 0.07731, -0.00311, -0.0)
+camera_distortion = (-0.10112, 0.07739, -0.00447, -0.0070)
 
 class GUI:
-    def __init__(self, path_to_model, output_directory, path_to_input, video_capture):
-        # self.vid_filename = path_to_input
-        # self.video_capture = video_capture
-        # self.video_capture.set(cv2.CAP_PROP_POS_MSEC, 200*1000)
+    def __init__(self, path_to_model, output_directory, path_to_input):
+        self.data_reader = ImageReader(path_to_input, start_frame=1707, equalize_histogram=True)
+        # self.data_reader = VideoReader(path_to_input, start_frame=0, equalize_histogram=False)
 
-        # self.images_dir = path_to_input
-        # file_list = os.listdir(self.images_dir)
-        # file_list.sort()
-        # self.images = iter(file_list)
-        # next(itertools.islice(self.images, 165, None))
-
-        self.data_reader = ImageReader(path_to_input, start_frame=283, equalize_histogram=False)
-        self.detector = None
         self.output_directory = output_directory
         self.mouse_pressed = False
         self.mask = None
         self.kp = []
+        self.poly = []
         self.overlay = None
         self.frame = self.data_reader.frame
         self.init_offset = None
@@ -43,7 +42,7 @@ class GUI:
         self.alpha = 0.4
         self.brush_size = 4
         self.path_to_model = path_to_model
-        # self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
+        self.detector = Detector(self.frame, self.path_to_model)
 
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
@@ -59,74 +58,46 @@ class GUI:
 
     def update_alpha(self, x):
         self.alpha = x/10
-        self.overlay = self.mask
-        self.overlay = np.where(self.overlay == cv2.GC_PR_BGD, 0, self.overlay)
-        imm = cv2.addWeighted(cv2.cvtColor(self.overlay * 255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
-                              1 - self.alpha, 0)
-        cv2.imshow("Mask labeler", imm)
+        self.show_mask()
 
     def update_brush(self, x):
         self.brush_size = x
 
-    # def next_img(self):
-    #     try:
-    #         self.fname = next(self.images)
-    #         print(os.path.join(self.images_dir, self.fname))
-    #         self.frame = cv2.imread(os.path.join(self.images_dir, self.fname))
-    #     except StopIteration:
-    #         exit(0)
-
     def run_video(self):
-        # ret, frame = self.video_capture.read()
-        # self.next_img()
-        # self.frame = self.data_reader.next_frame()
-
-        self.detector = Detector(self.frame, self.path_to_model, camera_matrix)
         while True:
-            # self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
+            cv2.imshow('Mask labeler', self.frame)
+            cv2.waitKey(10)
+            if self.detector.init_det:
+                continue
             if self.frame is not None:
-                # img_yuv = cv2.cvtColor(self.frame, cv2.COLOR_BGR2HSV)
-                # clahe = cv2.createCLAHE(2.0, (8, 8))
-                # img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
-                # self.frame = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
                 self.frame = cv2.undistort(self.frame, camera_matrix, camera_distortion)
-                cv2.imshow('Mask labeler', self.frame)
-                self.mask, self.frame = self.detector.detect(self.frame)
-                if self.mask is None:
-                    print('click on image to select offset, then press any key')
-                    cv2.waitKey(0)
-                    self.mask = np.zeros(self.detector.slice_size, dtype=np.uint8)
-                    self.frame = self.frame[self.detector.offset[0]:self.detector.offset[0] + self.detector.slice_size[0],
-                                            self.detector.offset[1]:self.detector.offset[1] + self.detector.slice_size[1]]
+                # self.mask, self.frame = self.detector.detect(self.frame)
+                # if not self.detector.init_det:
+                    # self.detector.init_det = False
+                    # self.detector.offset = (1000, 2700)
+                self.mask = np.zeros(self.detector.slice_size, dtype=np.uint8)
+                self.frame = self.frame[self.detector.offset[0]:self.detector.offset[0] + self.detector.slice_size[0],
+                             self.detector.offset[1]:self.detector.offset[1] + self.detector.slice_size[1]]
                     # continue
                 self.show_mask()
-            else:
-                # frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
-                # last_frame_no = self.frame_no
-                # cnt=1
-                # while self.frame_no-last_frame_no==0:
-                #     self.video_capture.set(cv2.CAP_PROP_POS_FRAMES,  self.frame_no + cnt)
-                #     last_frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
-                #     cnt += 1
-                #     print(self.frame_no, last_frame_no, cnt)
-                # ret, frame = self.video_capture.read()
-                print('lol')
-                continue
+
             k = cv2.waitKey(0)
             if k == ord('q'):
                 # print(self.video_capture.get(cv2.CAP_PROP_POS_FRAMES))
                 break
             # self.frame_no += 1
             if k == ord('n'):
-                self.data_reader.forward_n_frames(20)
+                self.data_reader.forward_n_frames(10)
             if k == ord('b'):
-                self.data_reader.backward_n_frames(20)
+                self.data_reader.backward_n_frames(10)
             if k == ord('r'):
                 self.mask = np.zeros(self.overlay.shape, dtype=np.uint8)
+                self.poly = []
+                self.kp = []
                 self.show_mask()
                 k = cv2.waitKey(0)
             if k == ord('s'):
-                self.frame = self.data_reader.next_frame()
+                pass
             if k == ord(' '):
                 if len(self.kp) != 6:
                     print("SELECT KEYPOINTS!", len(self.kp))
@@ -134,17 +105,8 @@ class GUI:
                     self.kp = []
                     cv2.waitKey(0)
                 self.save()
-                # self.video_capture.set(cv2.CAP_PROP_POS_FRAMES,  self.frame_no + 3)
-                ma_alpha = 0.9
-                # overlay = np.zeros(self.frame.shape[:2], dtype=np.uint8)
-                # overlay[self.detector.offset[0]:self.detector.offset[0] + self.detector.slice_size[0], self.detector.offset[1]:self.detector.offset[1] + self.detector.slice_size[1]] = self.overlay*100
-                # self.detector.moving_avg_image = cv2.addWeighted(self.detector.moving_avg_image, ma_alpha, overlay.astype(np.uint8), 1 - ma_alpha, 0, self.detector.moving_avg_image)
-                # cv2.imshow("lol", detector.moving_avg_image)
-            # ret, frame = self.video_capture.read()
+            self.detector.init_det = True
             self.frame = self.data_reader.next_frame()
-
-        # self.video_capture.release()
-
 
     def show_warning_window(self, message):
         img = np.zeros((200, 600, 3))
@@ -153,6 +115,7 @@ class GUI:
 
     def show_mask(self):
         self.overlay = self.mask
+        # print(self.overlay.shape, self.frame.shape)
         imm = cv2.addWeighted(cv2.cvtColor(self.overlay * 255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
                               1 - self.alpha, 0)
         cv2.imshow("Mask labeler", imm)
@@ -175,27 +138,33 @@ class GUI:
                     return
                 self.mouse_pressed = True
                 self.label = 1
-                cv2.circle(self.mask, (x, y), self.brush_size,  self.label, thickness=-1)
+                self.poly.append([x, y])
+                if len(self.poly) > 2:
+                    self.mask = np.full(self.frame.shape[:2], 0, np.uint8)
+                    cv2.fillPoly(self.mask, np.array(self.poly, dtype=np.int32)[np.newaxis, :, :], 1)
+                if len(self.poly)!=5 and len(self.poly)<8:
+                    self.kp.append((x,y))
                 self.show_mask()
             elif e == cv2.EVENT_LBUTTONUP:
                 self.mouse_pressed = False
-            elif e == cv2.EVENT_MOUSEMOVE:
-                if self.mouse_pressed:
-                    cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
-                    self.show_mask()
+            # elif e == cv2.EVENT_MOUSEMOVE:
+            #     if self.mouse_pressed:
+                    # cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
+                    # self.show_mask()
 
     def save(self):
         if self.mask is not None:
             label_mask = np.copy(self.mask)
             mask_coords = np.argwhere(label_mask == 1)
-            label_fname = os.path.join(self.output_directory, "labels", self.data_reader.fname[:-4]  + "_label.jpg") #+"_"+ str(int(self.frame_no))
+            label_fname = os.path.join(self.output_directory, "labels", self.data_reader.fname[:-4] + "_label.png") #+"_"+ str(int(self.frame_no))
             cv2.imwrite(label_fname, label_mask)
-            img_fname = os.path.join(self.output_directory, "images", self.data_reader.fname[:-4]+ ".jpg") # +"_"+ str(int(self.frame_no))
+            img_fname = os.path.join(self.output_directory, "images", self.data_reader.fname[:-4] + ".png") # +"_"+ str(int(self.frame_no))
             cv2.imwrite(img_fname, self.frame)
             ann_fname = os.path.join(self.output_directory, "annotations", self.data_reader.fname[:-4] + ".txt") #+"_"+ str(int(self.frame_no))
             with open(ann_fname, 'w') as f:
                 f.write(self.makeXml(mask_coords, self.kp, "charger", self.frame.shape[1], self.frame.shape[0], ann_fname))
             self.kp = []
+            self.poly = []
             print("Saved", label_fname)
 
     def makeXml(self, mask_coords, keypoints_list,  className, imgWidth, imgHeigth, filename):
@@ -209,7 +178,7 @@ class GUI:
         ymax = rel_ymax / imgHeigth
         ann = ET.Element('annotation')
         ET.SubElement(ann, 'folder').text = 'images'
-        ET.SubElement(ann, 'filename').text = filename + ".jpg"
+        ET.SubElement(ann, 'filename').text = filename + ".png"
         ET.SubElement(ann, 'path')
         source = ET.SubElement(ann, 'source')
         ET.SubElement(source, 'database').text = "Unknown"

@@ -11,7 +11,7 @@ except ImportError:
 
 class Detector:
 
-    def __init__(self, frame, path_to_model, camera_matrix):
+    def __init__(self, frame, path_to_model):
         self.init_det = True
         self.frame_shape = frame.shape
         self.slice_size = (720, 960)
@@ -89,10 +89,12 @@ class Detector:
                self.offset[1]:self.offset[1] + self.slice_size[1]]
 
     def init_detection(self, frame):
+        rows = 2
+        cols = 2
         y_start = np.random.random_integers(0, self.slice_size[0] / 2)
         x_start = np.random.random_integers(0, self.slice_size[1] / 2)
-        y_step = self.slice_size[0] - int((4 * self.slice_size[0] - self.frame_shape[0]) / (4 - 1))
-        x_step = self.slice_size[1] - int((5 * self.slice_size[1] - self.frame_shape[1]) / (5 - 1))
+        y_step = self.slice_size[0] - int((rows * self.slice_size[0] - self.frame_shape[0]) / (rows - 1))
+        x_step = self.slice_size[1] - int((cols * self.slice_size[1] - self.frame_shape[1]) / (cols - 1))
         for y_off in range(y_start, self.frame_shape[0] - y_step, y_step):
             for x_off in range(x_start, self.frame_shape[1] - x_step, x_step):
                 self.offset = (y_off, x_off)
