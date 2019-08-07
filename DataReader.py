@@ -5,6 +5,8 @@ class DataReader:
         self.frame_no = None
         self.frame = None
         self.frame_shape = None
+        self.camera_matrix = None
+        self.camera_distortion = None
 
     def next_frame(self):
         pass

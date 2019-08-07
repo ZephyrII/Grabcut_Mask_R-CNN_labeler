@@ -2,11 +2,16 @@ from DataReader import DataReader
 import cv2
 import os
 import itertools
+import numpy as np
 
 
 class ImageReader(DataReader):
 
     def __init__(self, data_path, equalize_histogram=False, start_frame=0):
+        self.camera_matrix = np.array([[5008.72, 0, 2771.21],
+                                       [0, 5018.43, 1722.90],
+                                       [0, 0, 1]])
+        self.camera_distortion = (-0.10112, 0.07739, -0.00447, -0.0070)
         self.equalize_histogram = equalize_histogram
         self.data_path = data_path
         self.images_dir = data_path
@@ -24,6 +29,7 @@ class ImageReader(DataReader):
             self.fname = next(self.images)
             print(os.path.join(self.images_dir, self.fname))
             self.frame = cv2.imread(os.path.join(self.images_dir, self.fname))
+            self.frame = cv2.undistort(self.frame, self.camera_matrix, self.camera_distortion)
         except StopIteration:
             print('No images left')
             raise
