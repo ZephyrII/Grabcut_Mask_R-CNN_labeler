@@ -11,10 +11,10 @@ from GUI import GUI
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-vid', '--video-input', dest="video_input", type=str,
-                        default= '/root/share/tf/dataset/warsaw/6_57/') #'/root/share/tf/videos/12_05_01.avi')
+                        default= '/root/share/tf/dataset/warsaw/14_04/') #'/root/share/tf/videos/12_05_01.avi')
     parser.add_argument('-img', '--image_directory', dest='image_directory', type=str)
     parser.add_argument('-out', '--output_directory', dest='output_directory', type=str,
-                        default='/root/share/tf/dataset/mask_front_kp/BlackFly_bright/')
+                        default='/root/share/tf/dataset/mask_front_kp/val/')
     args = parser.parse_args()
 
     path_to_model = os.path.join("/root/share/tf/Mask/model/4_07/all/", 'frozen_inference_graph.pb')

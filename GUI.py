@@ -4,7 +4,6 @@ try:
 except ImportError:
     pass
 import numpy as np
-from Detector import Detector
 import os
 import xml.etree.ElementTree as ET
 from ImageReader import ImageReader
@@ -27,22 +26,21 @@ camera_distortion = (-0.10112, 0.07739, -0.00447, -0.0070)
 
 class GUI:
     def __init__(self, path_to_model, output_directory, path_to_input):
-        self.data_reader = ImageReader(path_to_input, start_frame=1707, equalize_histogram=True)
+        self.data_reader = ImageReader(path_to_input, start_frame=5, equalize_histogram=False)
         # self.data_reader = VideoReader(path_to_input, start_frame=0, equalize_histogram=False)
 
         self.output_directory = output_directory
-        self.mouse_pressed = False
         self.mask = None
         self.kp = []
         self.poly = []
         self.overlay = None
         self.frame = self.data_reader.frame
+        self.slice_size = (720, 960)
         self.init_offset = None
         self.label = 1
-        self.alpha = 0.4
+        self.alpha = 0.04
         self.brush_size = 4
         self.path_to_model = path_to_model
-        self.detector = Detector(self.frame, self.path_to_model)
 
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
@@ -55,7 +53,6 @@ class GUI:
         if not os.path.exists(os.path.join(output_directory, 'annotations')):
             os.makedirs(os.path.join(output_directory, 'annotations'))
 
-
     def update_alpha(self, x):
         self.alpha = x/10
         self.show_mask()
@@ -67,25 +64,14 @@ class GUI:
         while True:
             cv2.imshow('Mask labeler', self.frame)
             cv2.waitKey(10)
-            if self.detector.init_det:
-                continue
             if self.frame is not None:
                 self.frame = cv2.undistort(self.frame, camera_matrix, camera_distortion)
-                # self.mask, self.frame = self.detector.detect(self.frame)
-                # if not self.detector.init_det:
-                    # self.detector.init_det = False
-                    # self.detector.offset = (1000, 2700)
-                self.mask = np.zeros(self.detector.slice_size, dtype=np.uint8)
-                self.frame = self.frame[self.detector.offset[0]:self.detector.offset[0] + self.detector.slice_size[0],
-                             self.detector.offset[1]:self.detector.offset[1] + self.detector.slice_size[1]]
-                    # continue
+                self.mask = np.zeros(self.frame.shape[:2], dtype=np.uint8)
                 self.show_mask()
 
             k = cv2.waitKey(0)
             if k == ord('q'):
-                # print(self.video_capture.get(cv2.CAP_PROP_POS_FRAMES))
                 break
-            # self.frame_no += 1
             if k == ord('n'):
                 self.data_reader.forward_n_frames(10)
             if k == ord('b'):
@@ -105,7 +91,6 @@ class GUI:
                     self.kp = []
                     cv2.waitKey(0)
                 self.save()
-            self.detector.init_det = True
             self.frame = self.data_reader.next_frame()
 
     def show_warning_window(self, message):
@@ -115,54 +100,66 @@ class GUI:
 
     def show_mask(self):
         self.overlay = self.mask
-        # print(self.overlay.shape, self.frame.shape)
         imm = cv2.addWeighted(cv2.cvtColor(self.overlay * 255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
                               1 - self.alpha, 0)
         cv2.imshow("Mask labeler", imm)
 
     def video_click(self, e, x, y, flags, param):
-            if e == cv2.EVENT_RBUTTONDOWN:
-                self.mouse_pressed = True
-                self.label = 0
-                cv2.circle(self.mask, (x, y), self.brush_size,  self.label, thickness=-1)
-            if e == cv2.EVENT_RBUTTONUP:
-                self.mouse_pressed = False
-            if e == cv2.EVENT_MBUTTONDOWN:
-                self.kp.append((x,y))
             if e == cv2.EVENT_LBUTTONDOWN:
-                if self.detector.init_det:
-                    print('setting detector offset to:', (y, x))
-                    self.detector.offset = (y, x)
-                    print(self.detector.offset)
-                    self.detector.init_det = False
-                    return
-                self.mouse_pressed = True
-                self.label = 1
                 self.poly.append([x, y])
                 if len(self.poly) > 2:
                     self.mask = np.full(self.frame.shape[:2], 0, np.uint8)
                     cv2.fillPoly(self.mask, np.array(self.poly, dtype=np.int32)[np.newaxis, :, :], 1)
                 if len(self.poly)!=5 and len(self.poly)<8:
-                    self.kp.append((x,y))
+                    self.kp.append((x, y))
                 self.show_mask()
-            elif e == cv2.EVENT_LBUTTONUP:
-                self.mouse_pressed = False
-            # elif e == cv2.EVENT_MOUSEMOVE:
-            #     if self.mouse_pressed:
-                    # cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
-                    # self.show_mask()
 
     def save(self):
         if self.mask is not None:
-            label_mask = np.copy(self.mask)
-            mask_coords = np.argwhere(label_mask == 1)
-            label_fname = os.path.join(self.output_directory, "labels", self.data_reader.fname[:-4] + "_label.png") #+"_"+ str(int(self.frame_no))
-            cv2.imwrite(label_fname, label_mask)
-            img_fname = os.path.join(self.output_directory, "images", self.data_reader.fname[:-4] + ".png") # +"_"+ str(int(self.frame_no))
-            cv2.imwrite(img_fname, self.frame)
-            ann_fname = os.path.join(self.output_directory, "annotations", self.data_reader.fname[:-4] + ".txt") #+"_"+ str(int(self.frame_no))
-            with open(ann_fname, 'w') as f:
-                f.write(self.makeXml(mask_coords, self.kp, "charger", self.frame.shape[1], self.frame.shape[0], ann_fname))
+            for res in [1]:
+                label_mask = np.copy(self.mask)
+                image = np.copy(self.frame)
+                resized_label = cv2.resize(label_mask, None, fx=res, fy=res)
+                resized_image = cv2.resize(image, None, fx=res, fy=res)
+
+                scaled_kp = (np.array(self.kp)/np.array(self.frame.shape[:2]))*np.array(resized_image.shape[:2])
+                crop_offset = scaled_kp[0]-tuple(x/2 for x in self.slice_size)
+                crop_offset = [int(max(min(crop_offset[0], resized_image.shape[1]-self.slice_size[0]), 0)),
+                               int(max(min(crop_offset[1], resized_image.shape[0]-self.slice_size[1]), 0))]
+                final_kp = scaled_kp-crop_offset
+                final_label = resized_label[crop_offset[1]:crop_offset[1]+self.slice_size[0],
+                                            crop_offset[0]:crop_offset[0]+self.slice_size[1]]
+                final_image = resized_image[crop_offset[1]:crop_offset[1]+self.slice_size[0],
+                                            crop_offset[0]:crop_offset[0]+self.slice_size[1]]
+                # for pt in final_kp:
+                #     cv2.circle(final_image, (int(pt[0]), int(pt[1])), 5, (0, 255, 0), -1)
+                # cv2.imshow('result', final_image)
+                # cv2.waitKey(0)
+
+                mask_coords = np.argwhere(final_label == 1)
+                label_fname = os.path.join(self.output_directory, "labels",
+                                           str(res) + '_' + self.data_reader.fname[:-4] + "_label.png")
+                cv2.imwrite(label_fname, final_label)
+
+                img_fname = os.path.join(self.output_directory, "images",
+                                         str(res) + '_' + self.data_reader.fname[:-4] + ".png")
+                cv2.imwrite(img_fname, final_image)
+
+
+                img_yuv = cv2.cvtColor(final_image, cv2.COLOR_BGR2HSV)
+                clahe = cv2.createCLAHE(2.0, (8, 8))
+                img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
+                final_image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
+                img_fname = os.path.join(self.output_directory, "images_bright",
+                                         str(res) + '_' + self.data_reader.fname[:-4] + ".png")
+                cv2.imwrite(img_fname, final_image)
+
+                ann_fname = os.path.join(self.output_directory, "annotations",
+                                         str(res) + '_' + self.data_reader.fname[:-4] + ".txt")
+                with open(ann_fname, 'w') as f:
+                    f.write(self.makeXml(mask_coords, final_kp, "charger", final_image.shape[1], final_image.shape[0],
+                                         ann_fname))
+
             self.kp = []
             self.poly = []
             print("Saved", label_fname)
