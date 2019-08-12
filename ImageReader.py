@@ -27,13 +27,13 @@ class ImageReader(DataReader):
         except StopIteration:
             print('No images left')
             raise
+        self.frame_no += 1
 
         if self.equalize_histogram:
             img_yuv = cv2.cvtColor(self.frame, cv2.COLOR_BGR2HSV)
             clahe = cv2.createCLAHE(2.0, (8, 8))
             img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
             self.frame = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
-            self.frame_no += 1
 
         return self.frame
 

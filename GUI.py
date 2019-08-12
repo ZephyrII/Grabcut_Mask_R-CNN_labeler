@@ -16,26 +16,23 @@ camera_distortion = (-0.0301, 0.03641, 0.001298, -0.00111)
 
 
 class GUI:
-    def __init__(self, path_to_model, output_directory, vid_filename, path_to_input):
-        self.data_reader = ImageReader(path_to_input, start_frame=121 , equalize_histogram=False)
-        self.gps_data_file = '/root/share/dataset/warsaw/gps_trajectory_extended_14_04.txt'
-        # self.vid_filename = vid_filename
+    def __init__(self, path_to_model, output_directory, path_to_input):
+        self.data_reader = ImageReader(path_to_input, start_frame=825, equalize_histogram=False)
+        self.gps_data_file = '/root/share/dataset/warsaw/gps_trajectory_extended_6_57.txt'
         self.output_directory = output_directory
-        self.mouse_pressed = False
+        self.slice_size = (600, 600)
+        self.set_offset = True
         self.mask = None
-        self.overlay = None
+        self.overlay = np.full(self.slice_size[:2], 0, np.uint8)
         self.frame = self.data_reader.frame
         self.roi_frame = None
         self.init_offset = None
         self.gps_data = None
         self.label = 1
-        self.alpha = 0.4
+        self.alpha = 0.1
         self.brush_size = 4
-        # self.video_capture = video_capture
-        # self.video_capture.set(cv2.CAP_PROP_POS_MSEC, 14.3 * 1000)
-        # self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 735)
+        self.poly = []
         self.path_to_model = path_to_model
-        # self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
         self.detector = None
         self.camera_matrix = np.array([[5008.72, 0, 2771.21],
                                        [0, 5018.43, 1722.90],
@@ -46,7 +43,7 @@ class GUI:
 
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
-        cv2.createTrackbar('Alpha', 'Mask labeler', 4, 10, self.update_alpha)
+        cv2.createTrackbar('Alpha', 'Mask labeler', 1, 10, self.update_alpha)
         cv2.createTrackbar('Brush size', 'Mask labeler', 4, 50, self.update_brush)
         if not os.path.exists(os.path.join(output_directory, 'images')):
             os.makedirs(os.path.join(output_directory, 'images'))
@@ -67,62 +64,47 @@ class GUI:
         self.brush_size = x
 
     def run_video(self):
-        # ret, self.frame = self.video_capture.read()
-        self.detector = Detector(self.frame, self.path_to_model, self.camera_matrix)
+        # self.detector = Detector(self.frame, self.path_to_model, self.camera_matrix)
+        cv2.imshow('Mask labeler', self.data_reader.frame)
+        print('click on image to select offset, then press any key')
+        cv2.waitKey(0)
         while True:
-            # self.frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
+            if self.set_offset:
+                cv2.imshow('Mask labeler', self.data_reader.frame)
+                print('click on image to select offset, then press any key')
+                cv2.waitKey(0)
             if self.frame is not None:
-                self.frame = cv2.undistort(self.frame, self.camera_matrix, camera_distortion)
+                self.frame = cv2.undistort(self.data_reader.frame, self.camera_matrix, camera_distortion)
                 cv2.imshow('Mask labeler', self.frame)
-                self.mask, self.frame = self.detector.detect(self.frame)
-                if self.mask is None:
-                    print('click on image to select offset, then press any key')
-                    cv2.waitKey(0)
-                    self.mask = np.zeros(self.detector.slice_size, dtype=np.uint8)
-                    self.frame = self.frame[self.detector.offset[0]:self.detector.offset[0] + self.detector.slice_size[0],
-                                            self.detector.offset[1]:self.detector.offset[1] + self.detector.slice_size[1]]
+                # self.mask, self.frame = self.detector.detect(self.frame)
+                # if self.mask is None:
+                self.mask = np.zeros(self.slice_size, dtype=np.uint8)
+                self.frame = self.data_reader.frame[self.init_offset[0]:self.init_offset[0] + self.slice_size[0],
+                             self.init_offset[1]:self.init_offset[1] + self.slice_size[1]]
                 self.show_mask()
-            # else:
-                # frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
-                # last_frame_no = self.frame_no
-                # cnt = 1
-                # while self.frame_no - last_frame_no == 0:
-                #     self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, self.frame_no + cnt)
-                #     last_frame_no = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
-                #     cnt += 1
-                #     print(self.frame_no, last_frame_no, cnt)
-                # ret, self.frame = self.video_capture.read()
-                # continue
             k = cv2.waitKey(0)
             if k == ord('q'):
-                print(self.video_capture.get(cv2.CAP_PROP_POS_FRAMES))
+                print(self.data_reader.frame_no)
                 break
-            # self.frame_no += 1
             if k == ord('n'):
                 self.data_reader.forward_n_frames(20)
             if k == ord('b'):
                 self.data_reader.backward_n_frames(20)
             if k == ord('r'):
+                self.poly = []
                 self.mask = np.zeros(self.overlay.shape, dtype=np.uint8)
                 self.show_mask()
                 k = cv2.waitKey(0)
             if k == ord('s'):
                 self.frame = self.data_reader.next_frame()
+            if k == ord('o'):
+                self.set_offset = True
             if k == ord(' '):
                 self.save()
-                # self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, self.frame_no + 3)
-                # ma_alpha = 0.9
-                # overlay = np.zeros(self.frame.shape[:2], dtype=np.uint8)
-                # overlay[self.detector.offset[1]:self.detector.offset[1] + self.detector.slice_size[1],
-                # self.detector.offset[0]:self.detector.offset[0] + self.detector.slice_size[0]] = self.overlay * 100
-                # self.detector.moving_avg_image = cv2.addWeighted(self.detector.moving_avg_image, ma_alpha,
-                #                                                  overlay.astype(np.uint8), 1 - ma_alpha, 0,
-                #                                                  self.detector.moving_avg_image)
-                # cv2.imshow("lol", detector.moving_avg_image)
-            # ret, self.frame = self.video_capture.read()
-            self.frame = self.data_reader.next_frame()
+                self.overlay = np.full(self.slice_size[:2], 0, np.uint8)
+                self.poly = []
+                self.frame = self.data_reader.next_frame()
 
-        self.video_capture.release()
 
     def show_warning_window(self, message):
         img = np.zeros((200, 600, 3))
@@ -130,37 +112,39 @@ class GUI:
         cv2.imshow("Warning", img)
 
     def show_mask(self):
-        self.overlay = self.mask
         imm = cv2.addWeighted(cv2.cvtColor(self.overlay * 255, cv2.COLOR_GRAY2BGR), self.alpha, self.frame,
                               1 - self.alpha, 0)
         cv2.imshow("Mask labeler", imm)
 
     def video_click(self, e, x, y, flags, param):
         # if e == cv2.EVENT_MBUTTONDOWN:
-        if e == cv2.EVENT_RBUTTONUP:
-            self.mouse_pressed = False
-        if e == cv2.EVENT_RBUTTONDOWN:
-            self.mouse_pressed = True
-            self.label = 0
-            cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
+        # if e == cv2.EVENT_RBUTTONUP:
+        #     self.mouse_pressed = False
+        # if e == cv2.EVENT_RBUTTONDOWN:
+        #     self.mouse_pressed = True
+        #     self.label = 0
+        #     cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
         if e == cv2.EVENT_LBUTTONDOWN:
-            if self.detector.init_det:
-                    print('setting detector offset to:', (y, x))
-                    self.detector.offset = (y, x)
-                    print(self.detector.offset)
-                    self.detector.init_det = False
-                    return
-            self.mouse_pressed = True
-            self.label = 1
-            cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
+            if self.set_offset:
+                print('setting offset to:', (y, x))
+                self.init_offset = (y, x)
+                self.set_offset = False
+                return
+            self.poly.append([x, y])
+            if len(self.poly)>2:
+                self.overlay = np.full(self.slice_size[:2], 0, np.uint8)
+                cv2.fillPoly(self.overlay, np.array(self.poly, dtype=np.int32)[np.newaxis, :, :], 1)
+            # self.mouse_pressed = True
+            # self.label = 1
+            # cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
             self.show_mask()
-        elif e == cv2.EVENT_LBUTTONUP:
-            self.mouse_pressed = False
-
-        elif e == cv2.EVENT_MOUSEMOVE:
-            if self.mouse_pressed:
-                cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
-                self.show_mask()
+        # elif e == cv2.EVENT_LBUTTONUP:
+        #     self.mouse_pressed = False
+        #
+        # elif e == cv2.EVENT_MOUSEMOVE:
+            # if self.mouse_pressed:
+            #     cv2.circle(self.mask, (x, y), self.brush_size, self.label, thickness=-1)
+            #     self.show_mask()
 
     def apriltag_pose(self, img):
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -201,7 +185,7 @@ class GUI:
             # label_mask = np.zeros(self.frame.shape[:2])
             # label_mask[self.detector.offset[0]:self.detector.offset[0] + self.detector.slice_size[1],
             # self.detector.offset[1]:self.detector.offset[1] + self.detector.slice_size[0]] = np.copy(self.mask)
-            label_mask = np.copy(self.mask)
+            label_mask = np.copy(self.overlay)
             mask_coords = np.argwhere(label_mask == 1)
             center = (np.mean(mask_coords[:, 1]), np.mean(mask_coords[:, 0]))
 
@@ -220,7 +204,7 @@ class GUI:
             pose = np.identity(4)[:3, :]
             pose[0, 3] = self.gps_data[1]
             pose[1, 3] = 3
-            pose[2, 3] = self.gps_data[2]
+            pose[2, 3] = str(abs(float(self.gps_data[2])))
             print(pose)
             if pose is not None:
                 self.save_metadata(center, pose, ann_fname)
@@ -228,12 +212,12 @@ class GUI:
                     f.write(self.data_reader.fname[:-4] + "_" + "{:06d}\n".format(int(self.data_reader.frame_no)))
                 print("Saved", label_fname)
             else:
-                print("AprilTag pose is None")
+                print("Pose is None")
 
     def save_metadata(self, center, pose, filename):
         # pose[:3, :3] = np.identity(3)
         results = {'center': np.expand_dims(center, 0), 'cls_indexes': [1], 'factor_depth': 1,
                    'intrinsics_matrix': self.camera_matrix,
                    'poses': np.expand_dims(pose, 2), 'rotation_translation_matrix': np.identity(4)[:3, :],
-                   'vertmap': np.zeros((0, 0, 3)), 'offset': self.detector.offset}
-        scipy.io.savemat(filename, results, do_compression=True)
+                   'vertmap': np.zeros((0, 0, 3)), 'offset': self.init_offset}
+        scipy.io.savemat(filename, results, do_compression=False)
