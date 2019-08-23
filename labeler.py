@@ -11,13 +11,12 @@ from GUI import GUI
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-vid', '--video-input', dest="video_input", type=str,
-                        default='/root/share/tf/videos/GH010351.MP4')
+                        default= '/root/share/tf/dataset/warsaw/14_04/') #'/root/share/tf/videos/12_05_01.avi')
     parser.add_argument('-img', '--image_directory', dest='image_directory', type=str)
-    parser.add_argument('-out', '--output_directory', dest='output_directory', type=str)
+    parser.add_argument('-out', '--output_directory', dest='output_directory', type=str,
+                        default='/root/share/tf/dataset/mask_front_kp/val/')
     args = parser.parse_args()
-    vid_filename = args.video_input.split('/')[-1]
 
-    path_to_model = os.path.join("/root/share/tf/Mask/model/8.04/", 'frozen_inference_graph.pb')
-    video_capture = cv2.VideoCapture(args.video_input)
-    gui = GUI(path_to_model, args.output_directory, vid_filename, video_capture)
+    path_to_model = os.path.join("/root/share/tf/Mask/model/4_07/all/", 'frozen_inference_graph.pb')
+    gui = GUI(path_to_model, args.output_directory, args.video_input)
     gui.run_video()
