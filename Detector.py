@@ -12,7 +12,7 @@ import rospy
 
 class Detector:
 
-    def __init__(self, path_to_model):
+    def __init__(self, path_to_charger_model, path_to_pole_model):
         self.init_det = True
         self.slice_size = (720, 960)
         self.offset = (0, 0)
@@ -22,8 +22,6 @@ class Detector:
         self.contour = None
         self.frame_shape = None
         self.moving_avg_image = None
-
-        path_to_pole_model = os.path.join("/root/share/tf/Faster/pole/model", 'frozen_inference_graph.pb')
         self.pole_detection_graph = tf.Graph()
         with self.pole_detection_graph.as_default():
             od_graph_def = tf.compat.v1.GraphDef()
@@ -37,13 +35,12 @@ class Detector:
         self.detection_graph = tf.Graph()
         with self.detection_graph.as_default():
             od_graph_def = tf.compat.v1.GraphDef()
-            with tf.io.gfile.GFile(path_to_model, 'rb') as fid:
+            with tf.io.gfile.GFile(path_to_charger_model, 'rb') as fid:
                 serialized_graph = fid.read()
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
 
             self.sess = tf.compat.v1.Session(graph=self.detection_graph)
-
 
         self.rpn_box_predictor_features = None
         self.class_predictor_weights = None

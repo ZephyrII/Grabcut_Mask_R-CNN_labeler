@@ -25,8 +25,9 @@ class DetectorNode:
         self.output_directory = '/root/share/tf/dataset/semi-sup'
         rospy.init_node('deep_pose_estimator')
         self.scale_factor = 1.0
-        path_to_model = os.path.join("/root/share/tf/Mask/model/2_08/GP_A8_BR_MS", 'frozen_inference_graph.pb')
-        self.detector = Detector(path_to_model)
+        path_to_charger_model = os.path.join("/root/share/tf/Mask/model/2_08/GP_A8_BR_MS", 'frozen_inference_graph.pb')
+        path_to_pole_model = os.path.join("/root/share/tf/Faster/pole/model_A8", 'frozen_inference_graph.pb')
+        self.detector = Detector(path_to_charger_model, path_to_pole_model)
         self.frame_shape = self.get_image_shape()
         self.frame_shape = [int(self.frame_shape[0] * self.scale_factor), int(self.frame_shape[1] * self.scale_factor)]
         self.detector.init_size(self.frame_shape)
