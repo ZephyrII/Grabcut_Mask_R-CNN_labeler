@@ -26,8 +26,8 @@ camera_distortion = (-0.10112, 0.07739, -0.00447, -0.0070)
 
 class GUI:
     def __init__(self, path_to_model, output_directory, path_to_input):
-        self.data_reader = ImageReader(path_to_input, start_frame=5, equalize_histogram=False)
-        # self.data_reader = VideoReader(path_to_input, start_frame=0, equalize_histogram=False)
+        # self.data_reader = ImageReader(path_to_input, start_frame=5, equalize_histogram=False)
+        self.data_reader = VideoReader(path_to_input, start_frame=0, equalize_histogram=False)
 
         self.output_directory = output_directory
         self.mask = None
@@ -73,17 +73,19 @@ class GUI:
             if k == ord('q'):
                 break
             if k == ord('n'):
-                self.data_reader.forward_n_frames(10)
+                self.frame = self.data_reader.forward_n_frames(10)
+                self.show_mask()
             if k == ord('b'):
-                self.data_reader.backward_n_frames(10)
+                self.frame = qself.data_reader.backward_n_frames(10)
+                self.show_mask()
             if k == ord('a'):
                 self.box = (int(self.box[0]*1.1), int(self.box[1]*1.1))
             if k == ord('z'):
                 self.box = (int(self.box[0]*0.9), int(self.box[1]*0.9))
             if k == ord('s'):
-                self.box[0] = int(self.box[0]*1.1)
+                self.box = (int(self.box[0]*1.1), int(self.box[1]))
             if k == ord('x'):
-                self.box[0] = int(self.box[0]*0.9)
+                self.box = (int(self.box[0]), int(self.box[1]*1.1))
             # if k == ord('r'):
             #     self.mask = np.zeros(self.overlay.shape, dtype=np.uint8)
             #     self.poly = []
