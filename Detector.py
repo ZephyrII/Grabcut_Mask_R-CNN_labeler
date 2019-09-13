@@ -75,9 +75,9 @@ class Detector:
             boxes=np.squeeze(boxes),
             classes=np.squeeze(classes).astype(np.int32),
             scores=np.squeeze(scores),
-            min_score_thresh=.01
+            min_score_thresh=.001
         )
-        ma_alpha = 0.1
+        ma_alpha = 0.0
 
         for idx in range(len(rect_points)):
             abs_xmin = int(rect_points[idx]['xmin'] * self.slice_size[1] + self.offset[1])
@@ -89,6 +89,7 @@ class Detector:
             ma_overlay = np.zeros(self.frame_shape[:2], dtype=np.uint8)
             ma_overlay[abs_ymin:abs_ymax, abs_xmin:abs_xmax] = class_scores[idx][0]
             self.moving_avg_image = cv2.addWeighted(ma_overlay, ma_alpha, self.moving_avg_image, 1 - ma_alpha, 0)
+            # print("mask avg:", np.average(masks[0][idx]), "score:", class_scores[idx])
             detection = dict(rel_rect=rect_points[idx], score=class_scores[idx], abs_rect=(abs_xmin, abs_ymin, abs_xmax, abs_ymax), mask=masks[0][idx])
             if keypoints is not None:
                 absolute_kp = []
@@ -97,15 +98,15 @@ class Detector:
                 detection['keypoints'] = absolute_kp
             self.detections.append(detection)
 
-
     def detect(self, frame):
         if self.frame_shape is None:
             return
         self.detections = []
         self.best_detection = None
-        if self.init_det:
+        if self.init_det:             # comment in 1280x960 resolution
             self.init_detection(frame)
         else:
+        # self.offset = (0, 0)            #uncomment in 1280x960 resolution
             self.get_CNN_output(self.get_slice(frame))
         if len(self.detections) == 0:
             self.init_det = True
@@ -117,7 +118,7 @@ class Detector:
 
     def get_slice(self, frame):
         return frame[self.offset[0]:self.offset[0] + self.slice_size[0],
-               self.offset[1]:self.offset[1] + self.slice_size[1]]
+                     self.offset[1]:self.offset[1] + self.slice_size[1]]
 
     def init_detection(self, frame):
         small_frame = cv2.resize(frame, (self.slice_size[1], self.slice_size[0]))
