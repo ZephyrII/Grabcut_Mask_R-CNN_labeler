@@ -31,12 +31,12 @@ class DetectorNode:
         self.output_directory = '/root/share/tf/dataset/semi-sup'
         rospy.init_node('deep_pose_estimator')
         self.scale_factor = 1.0
-        # path_to_charger_model = os.path.join("/root/share/tf/Mask/model/27_08_self-train", 'frozen_inference_graph.pb')
-        path_to_charger_model = os.path.join("/root/share/tf/Mask/model/2_08/GP_A8_BR_MS", 'frozen_inference_graph.pb')
+        path_to_charger_model = os.path.join("/root/share/tf/Mask/model/27_08_self-train", 'frozen_inference_graph.pb')
+        # path_to_charger_model = os.path.join("/root/share/tf/Mask/model/11_09_st", 'frozen_inference_graph.pb')
         path_to_pole_model = os.path.join("/root/share/tf/Faster/pole/model_A8", 'frozen_inference_graph.pb')
-        command = "rosbag play --skip-empty=5 -r 1 /root/share/tf/dataset/warsaw/rosbags/27-14-04-47_* "
+        command = "rosbag play --skip-empty=5 -r 1 /root/share/tf/dataset/warsaw/rosbags/27-14-04-47_7.bag "
         self.detector = Detector(path_to_charger_model, path_to_pole_model)
-        # self.p = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
+        self.p = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
         self.frame_shape = self.get_image_shape()
         self.frame_shape = [int(self.frame_shape[0] * self.scale_factor), int(self.frame_shape[1] * self.scale_factor)]
         self.detector.init_size(self.frame_shape)
@@ -87,11 +87,10 @@ class DetectorNode:
                 self.toggle_rosbag_play()
                 self.detect(self.image)
                 if self.detector.best_detection is not None:
-                    if int(self.detector.best_detection['score'][0]) > 95:
-                        self.save_all()
-                        self.toggle_rosbag_play()
-                        continue
-                    k = cv2.waitKey(0)
+                    if int(self.detector.best_detection['score'][0]) > 98:
+                        k = ord('n')
+                    else:
+                        k = cv2.waitKey(0)
                 else:
                     k = 27
                 if k == 27:
@@ -99,20 +98,19 @@ class DetectorNode:
                     self.poly = []
                     self.mask = np.zeros(self.image.shape[:2], np.uint8)
                     self.show_mask()
-                    while k != ord('n'):
-                        k = cv2.waitKey(0)
-                        if k == ord('s'):
-                            self.toggle_rosbag_play()
-                            continue
-                        if k == ord('r'):
-                            self.keypoints = []
-                            self.poly = []
-                            self.show_mask()
-                        if k == ord('q'):
-                            exit(0)
-                    self.save_all(100)
-                    self.toggle_rosbag_play()
-                    continue
+                    k = cv2.waitKey(0)
+                    if k == ord('s'):
+                        self.toggle_rosbag_play()
+                    # if k == ord('r'):
+                    #     self.keypoints = []
+                    #     self.poly = []
+                    #     self.show_mask()
+                    if k == ord('q'):
+                        exit(0)
+                    if k == ord('n'):
+                        self.save_all(100)
+                        self.toggle_rosbag_play()
+                        continue
                 if k == ord('q'):
                     self.p.kill()
                     exit(0)
@@ -133,10 +131,10 @@ class DetectorNode:
         self.image = None
 
     def toggle_rosbag_play(self):
-        self.keyboard.press(Key.space)
-        self.keyboard.release(Key.space)
-        # self.p.stdin.write(b" ")
-        # self.p.stdin.flush()
+        # self.keyboard.press(Key.space)
+        # self.keyboard.release(Key.space)
+        self.p.stdin.write(b" ")
+        self.p.stdin.flush()
 
     def get_imu_transform(self, imu_msg):
         quat = imu_msg.orientation
