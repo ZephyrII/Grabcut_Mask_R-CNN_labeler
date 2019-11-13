@@ -25,8 +25,8 @@ camera_matrix = np.array([[5008.72, 0, 2771.21],
 camera_distortion = (-0.10112, 0.07739, -0.00447, -0.0070)
 
 class GUI:
-    def __init__(self, path_to_model, output_directory, path_to_input):
-        self.data_reader = ImageReader(path_to_input, start_frame=5, equalize_histogram=False)
+    def __init__(self, output_directory, path_to_input):
+        self.data_reader = ImageReader(path_to_input, start_frame=65, equalize_histogram=False)
         # self.data_reader = VideoReader(path_to_input, start_frame=0, equalize_histogram=False)
 
         self.output_directory = output_directory
@@ -38,9 +38,8 @@ class GUI:
         self.slice_size = (720, 960)
         self.init_offset = None
         self.label = 1
-        self.alpha = 0.04
+        self.alpha = 0.4
         self.brush_size = 4
-        self.path_to_model = path_to_model
 
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
@@ -91,7 +90,8 @@ class GUI:
                     self.kp = []
                     cv2.waitKey(0)
                 self.save()
-            self.frame = self.data_reader.next_frame()
+            # self.frame = self.data_reader.next_frame()
+            self.frame = self.data_reader.forward_n_frames(3)
 
     def show_warning_window(self, message):
         img = np.zeros((200, 600, 3))
@@ -116,63 +116,77 @@ class GUI:
 
     def save(self):
         if self.mask is not None:
-            for res in [1]:
-                label_mask = np.copy(self.mask)
-                image = np.copy(self.frame)
-                resized_label = cv2.resize(label_mask, None, fx=res, fy=res)
-                resized_image = cv2.resize(image, None, fx=res, fy=res)
+            raw_mask_coords = np.argwhere(self.mask == 1)
+            abs_xmin = np.min(raw_mask_coords[:, 1])
+            abs_ymin = np.min(raw_mask_coords[:, 0])
+            abs_xmax = np.max(raw_mask_coords[:, 1])
+            abs_ymax = np.max(raw_mask_coords[:, 0])
+            rel_width = self.slice_size[1] / abs(abs_xmax-abs_xmin)
+            rel_height = self.slice_size[0] / abs(abs_ymax-abs_ymin)
+            print("rel_height", rel_height, rel_width)
+            if rel_width<2 or rel_height<2:
+                res = np.min((0.5*self.slice_size[0]/(abs_ymax-abs_ymin), 0.5*self.slice_size[1]/(abs_xmax-abs_xmin)))
+            else:
+                res = 1
+            # for res in [1]:
 
-                scaled_kp = (np.array(self.kp)/np.array(self.frame.shape[:2]))*np.array(resized_image.shape[:2])
-                crop_offset = scaled_kp[0]-tuple(x/2 for x in self.slice_size)
-                crop_offset = [int(max(min(crop_offset[0], resized_image.shape[1]-self.slice_size[0]), 0)),
-                               int(max(min(crop_offset[1], resized_image.shape[0]-self.slice_size[1]), 0))]
-                final_kp = scaled_kp-crop_offset
-                final_label = resized_label[crop_offset[1]:crop_offset[1]+self.slice_size[0],
-                                            crop_offset[0]:crop_offset[0]+self.slice_size[1]]
-                final_image = resized_image[crop_offset[1]:crop_offset[1]+self.slice_size[0],
-                                            crop_offset[0]:crop_offset[0]+self.slice_size[1]]
-                # for pt in final_kp:
-                #     cv2.circle(final_image, (int(pt[0]), int(pt[1])), 5, (0, 255, 0), -1)
-                # cv2.imshow('result', final_image)
-                # cv2.waitKey(0)
+            label_mask = np.copy(self.mask)
+            image = np.copy(self.frame)
+            resized_label = cv2.resize(label_mask, None, fx=res, fy=res)
+            resized_image = cv2.resize(image, None, fx=res, fy=res)
 
-                mask_coords = np.argwhere(final_label == 1)
-                label_fname = os.path.join(self.output_directory, "labels",
-                                           str(res) + '_' + self.data_reader.fname[:-4] + "_label.png")
-                cv2.imwrite(label_fname, final_label)
+            scaled_kp = (np.array(self.kp)/np.array(self.frame.shape[:2]))*np.array(resized_image.shape[:2])
+            crop_offset = scaled_kp[0]-tuple(x/2 for x in self.slice_size)
+            crop_offset = [int(max(min(crop_offset[0], resized_image.shape[0]-self.slice_size[0]), 0)),
+                           int(max(min(crop_offset[1], resized_image.shape[1]-self.slice_size[1]), 0))]
+            print(crop_offset)
+            final_kp = scaled_kp-crop_offset
+            final_label = resized_label[crop_offset[1]:crop_offset[1]+self.slice_size[0],
+                                        crop_offset[0]:crop_offset[0]+self.slice_size[1]]
+            final_image = resized_image[crop_offset[1]:crop_offset[1]+self.slice_size[0],
+                                        crop_offset[0]:crop_offset[0]+self.slice_size[1]]
+            # for pt in final_kp:
+            #     cv2.circle(final_image, (int(pt[0]), int(pt[1])), 5, (0, 255, 0), -1)
+            # cv2.imshow('result', final_image)
+            # cv2.waitKey(0)
 
-                img_fname = os.path.join(self.output_directory, "images",
-                                         str(res) + '_' + self.data_reader.fname[:-4] + ".png")
-                cv2.imwrite(img_fname, final_image)
+            mask_coords = np.argwhere(final_label == 1)
+            label_fname = os.path.join(self.output_directory, "labels",
+                                       str(res) + '_' + self.data_reader.fname[:-4] + "_label.png")
+            cv2.imwrite(label_fname, final_label)
+
+            img_fname = os.path.join(self.output_directory, "images",
+                                     str(res) + '_' + self.data_reader.fname[:-4] + ".png")
+            cv2.imwrite(img_fname, final_image)
 
 
-                img_yuv = cv2.cvtColor(final_image, cv2.COLOR_BGR2HSV)
-                clahe = cv2.createCLAHE(2.0, (8, 8))
-                img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
-                final_image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
-                img_fname = os.path.join(self.output_directory, "images_bright",
-                                         str(res) + '_' + self.data_reader.fname[:-4] + ".png")
-                cv2.imwrite(img_fname, final_image)
+            img_yuv = cv2.cvtColor(final_image, cv2.COLOR_BGR2HSV)
+            clahe = cv2.createCLAHE(2.0, (8, 8))
+            img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
+            final_image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
+            img_fname = os.path.join(self.output_directory, "images_bright",
+                                     str(res) + '_' + self.data_reader.fname[:-4] + ".png")
+            cv2.imwrite(img_fname, final_image)
 
-                ann_fname = os.path.join(self.output_directory, "annotations",
-                                         str(res) + '_' + self.data_reader.fname[:-4] + ".txt")
-                with open(ann_fname, 'w') as f:
-                    f.write(self.makeXml(mask_coords, final_kp, "charger", final_image.shape[1], final_image.shape[0],
-                                         ann_fname))
+            ann_fname = os.path.join(self.output_directory, "annotations",
+                                     str(res) + '_' + self.data_reader.fname[:-4] + ".txt")
+            with open(ann_fname, 'w') as f:
+                f.write(self.makeXml(mask_coords, final_kp, "charger", final_image.shape[1], final_image.shape[0],
+                                     ann_fname))
 
             self.kp = []
             self.poly = []
             print("Saved", label_fname)
 
     def makeXml(self, mask_coords, keypoints_list,  className, imgWidth, imgHeigth, filename):
-        rel_xmin = np.min(mask_coords[:, 1])
-        rel_ymin = np.min(mask_coords[:, 0])
-        rel_xmax = np.max(mask_coords[:, 1])
-        rel_ymax = np.max(mask_coords[:, 0])
-        xmin = rel_xmin / imgWidth
-        ymin = rel_ymin / imgHeigth
-        xmax = rel_xmax / imgWidth
-        ymax = rel_ymax / imgHeigth
+        abs_xmin = np.min(mask_coords[:, 1])
+        abs_ymin = np.min(mask_coords[:, 0])
+        abs_xmax = np.max(mask_coords[:, 1])
+        abs_ymax = np.max(mask_coords[:, 0])
+        xmin = abs_xmin / imgWidth
+        ymin = abs_ymin / imgHeigth
+        xmax = abs_xmax / imgWidth
+        ymax = abs_ymax / imgHeigth
         ann = ET.Element('annotation')
         ET.SubElement(ann, 'folder').text = 'images'
         ET.SubElement(ann, 'filename').text = filename + ".png"

@@ -38,11 +38,11 @@ class ImageReader(DataReader):
         return self.frame
 
     def forward_n_frames(self, n):
-        next(itertools.islice(self.images, self.frame_no + n, None))
+        next(itertools.islice(self.images, n, None))
         self.frame_no += n
         return self.next_frame()
 
     def backward_n_frames(self, n):
-        next(itertools.islice(self.images, self.frame_no - n, None))
+        next(itertools.islice(self.images, n, None))
         self.frame_no -= n
         return self.next_frame()
