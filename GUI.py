@@ -25,9 +25,9 @@ camera_matrix = np.array([[5008.72, 0, 2771.21],
 camera_distortion = (-0.10112, 0.07739, -0.00447, -0.0070)
 
 class GUI:
-    def __init__(self, path_to_model, output_directory, path_to_input):
-        # self.data_reader = ImageReader(path_to_input, start_frame=5, equalize_histogram=False)
-        self.data_reader = VideoReader(path_to_input, start_frame=0, equalize_histogram=False)
+    def __init__(self, output_directory, path_to_input):
+        self.data_reader = ImageReader(path_to_input, start_frame=0, equalize_histogram=False)
+        # self.data_reader = VideoReader(path_to_input, start_frame=0, equalize_histogram=False)
 
         self.output_directory = output_directory
         self.mask = None
@@ -40,7 +40,6 @@ class GUI:
         self.label = 1
         self.alpha = 0.04
         self.brush_size = 4
-        self.path_to_model = path_to_model
 
         cv2.namedWindow("Mask labeler", 0)
         cv2.setMouseCallback("Mask labeler", self.video_click)
@@ -76,7 +75,7 @@ class GUI:
                 self.frame = self.data_reader.forward_n_frames(10)
                 self.show_mask()
             if k == ord('b'):
-                self.frame = qself.data_reader.backward_n_frames(10)
+                self.frame = self.data_reader.backward_n_frames(10)
                 self.show_mask()
             if k == ord('a'):
                 self.box = (int(self.box[0]*1.1), int(self.box[1]*1.1))
@@ -92,7 +91,7 @@ class GUI:
             #     self.kp = []
             #     self.show_mask()
             #     k = cv2.waitKey(0)
-            if k == ord('s'):
+            if k == ord('f'):
                 pass
             if k == ord(' '):
                 # if len(self.kp) != 6:
@@ -101,7 +100,8 @@ class GUI:
                 #     self.kp = []
                 #     cv2.waitKey(0)
                 self.save()
-                self.frame = self.data_reader.next_frame()
+                # self.frame = self.data_reader.next_frame()
+                self.frame = self.data_reader.forward_n_frames(3)
 
     def show_warning_window(self, message):
         img = np.zeros((200, 600, 3))
@@ -110,7 +110,7 @@ class GUI:
 
     def show_mask(self):
         img = np.copy(self.frame)
-        cv2.rectangle(img, (self.offset[0]-self.box[0], self.offset[1]-self.box[1]), self.offset, (255,255,255), 3)
+        cv2.rectangle(img, (self.offset[0]-self.box[0], self.offset[1]-self.box[1]), self.offset, (255,0,0), 3)
         cv2.imshow("Mask labeler", img)
 
     def video_click(self, e, x, y, flags, param):
