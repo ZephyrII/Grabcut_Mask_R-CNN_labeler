@@ -26,7 +26,7 @@ camera_distortion = (-0.10112, 0.07739, -0.00447, -0.0070)
 
 class GUI:
     def __init__(self, output_directory, path_to_input):
-        self.data_reader = ImageReader(path_to_input, start_frame=65, equalize_histogram=False)
+        self.data_reader = ImageReader(path_to_input, start_frame=735, equalize_histogram=False)
         # self.data_reader = VideoReader(path_to_input, start_frame=0, equalize_histogram=False)
 
         self.output_directory = output_directory
@@ -91,7 +91,7 @@ class GUI:
                     cv2.waitKey(0)
                 self.save()
             # self.frame = self.data_reader.next_frame()
-            self.frame = self.data_reader.forward_n_frames(3)
+            self.frame = self.data_reader.forward_n_frames(2)
 
     def show_warning_window(self, message):
         img = np.zeros((200, 600, 3))
@@ -123,7 +123,7 @@ class GUI:
             abs_ymax = np.max(raw_mask_coords[:, 0])
             rel_width = self.slice_size[1] / abs(abs_xmax-abs_xmin)
             rel_height = self.slice_size[0] / abs(abs_ymax-abs_ymin)
-            print("rel_height", rel_height, rel_width)
+            # print("rel_height", rel_height, rel_width)
             if rel_width<2 or rel_height<2:
                 res = np.min((0.5*self.slice_size[0]/(abs_ymax-abs_ymin), 0.5*self.slice_size[1]/(abs_xmax-abs_xmin)))
             else:
@@ -134,21 +134,24 @@ class GUI:
             image = np.copy(self.frame)
             resized_label = cv2.resize(label_mask, None, fx=res, fy=res)
             resized_image = cv2.resize(image, None, fx=res, fy=res)
+            # print("resized_image.shape", resized_image.shape)
 
             scaled_kp = (np.array(self.kp)/np.array(self.frame.shape[:2]))*np.array(resized_image.shape[:2])
             crop_offset = scaled_kp[0]-tuple(x/2 for x in self.slice_size)
-            crop_offset = [int(max(min(crop_offset[0], resized_image.shape[0]-self.slice_size[0]), 0)),
-                           int(max(min(crop_offset[1], resized_image.shape[1]-self.slice_size[1]), 0))]
-            print(crop_offset)
-            final_kp = scaled_kp-crop_offset
-            final_label = resized_label[crop_offset[1]:crop_offset[1]+self.slice_size[0],
-                                        crop_offset[0]:crop_offset[0]+self.slice_size[1]]
-            final_image = resized_image[crop_offset[1]:crop_offset[1]+self.slice_size[0],
-                                        crop_offset[0]:crop_offset[0]+self.slice_size[1]]
+            # print("crop_offset_1", crop_offset)
+            crop_offset = [int(max(min(crop_offset[1], resized_image.shape[0] - self.slice_size[0]), 0)),
+                           int(max(min(crop_offset[0], resized_image.shape[1] - self.slice_size[1]), 0))]
+            # print("crop_offset_2", crop_offset)
+            final_kp = scaled_kp-[crop_offset[1], crop_offset[0]]
+            final_label = resized_label[crop_offset[0]:crop_offset[0]+self.slice_size[0],
+                                        crop_offset[1]:crop_offset[1]+self.slice_size[1]]
+            final_image = resized_image[crop_offset[0]:crop_offset[0]+self.slice_size[0],
+                                        crop_offset[1]:crop_offset[1]+self.slice_size[1]]
             # for pt in final_kp:
             #     cv2.circle(final_image, (int(pt[0]), int(pt[1])), 5, (0, 255, 0), -1)
             # cv2.imshow('result', final_image)
             # cv2.waitKey(0)
+            # print("final_label.shape", final_label.shape)
 
             mask_coords = np.argwhere(final_label == 1)
             label_fname = os.path.join(self.output_directory, "labels",

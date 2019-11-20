@@ -17,5 +17,5 @@ if __name__ == '__main__':
                         default='/home/tnowak/Inea/labeled')
     args = parser.parse_args()
 
-    gui = GUI(args.output_directory, "/home/tnowak/Inea/images")
+    gui = GUI(args.output_directory, "/home/tnowak/Inea/images_18")
     gui.run_video()
