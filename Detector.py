@@ -165,7 +165,7 @@ class Detector:
             boxes=np.squeeze(boxes),
             classes=np.squeeze(classes).astype(np.int32),
             scores=np.squeeze(scores),
-            min_score_thresh=.9
+            min_score_thresh=.09
         )
 
         detections = []
