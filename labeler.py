@@ -160,7 +160,7 @@ class DetectorNode:
             if len(self.poly) > 2:
                 self.mask = np.zeros(self.image.shape[:2], np.uint8)
                 cv2.fillPoly(self.mask, np.array(self.poly, dtype=np.int32)[np.newaxis, :, :], 1)
-            if len(self.poly) == 1 or len(self.poly) == 4 or len(self.poly) == 5 or len(self.poly) == 10:
+            if len(self.poly) < 5 or len(self.poly) == 9 or len(self.poly) == 10:
                 self.keypoints.append((x, y))
             self.show_mask()
 
@@ -294,66 +294,6 @@ class DetectorNode:
         # ET.SubElement(camera_distorsion_node, 'kc4').text = str(self.camera_distortion[3])
         # ET.SubElement(camera_distorsion_node, 'kc5').text = str(self.camera_distortion[4])
         return ET.tostring(ann, encoding='unicode', method='xml')
-
-    def save_poseCNN(self, stamp, mask, gt_pose):
-        if mask is not None:
-            for res in [1]:
-                label_mask = np.copy(mask)
-                image = np.copy(self.image)
-                resized_label = cv2.resize(label_mask, None, fx=res, fy=res)
-                resized_image = cv2.resize(image, None, fx=res, fy=res)
-
-                scaled_kp = (np.array(self.keypoints) / np.array(self.image.shape[:2])) * np.array(
-                    resized_image.shape[:2])
-                crop_offset = scaled_kp[0] - tuple(x / 2 for x in self.slice_size)  # TODO: SLICE SIZE FORMAT MODIFIED!!
-                crop_offset = [int(max(min(crop_offset[0], resized_image.shape[1] - self.slice_size[0]), 0)),
-                               int(max(min(crop_offset[1], resized_image.shape[0] - self.slice_size[1]), 0))]
-                final_kp = scaled_kp - crop_offset
-                final_label = resized_label[crop_offset[1]:crop_offset[1] + self.slice_size[0],
-                              crop_offset[0]:crop_offset[0] + self.slice_size[1]]
-                final_image = resized_image[crop_offset[1]:crop_offset[1] + self.slice_size[0],
-                              crop_offset[0]:crop_offset[0] + self.slice_size[1]]
-
-                center = (np.mean(final_kp[:, 1]), np.mean(final_kp[:, 0]))
-                label_fname = os.path.join(self.output_directory, "pose", "labels",
-                                           str(res) + '_' + str(stamp) + "_label.png")
-                cv2.imwrite(label_fname, final_label)
-
-                img_fname = os.path.join(self.output_directory, "pose", "images",
-                                         str(res) + '_' + str(stamp) + ".png")
-                cv2.imwrite(img_fname, final_image)
-
-                img_yuv = cv2.cvtColor(final_image, cv2.COLOR_BGR2HSV)
-                clahe = cv2.createCLAHE(2.0, (8, 8))
-                img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
-                final_image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
-                img_fname = os.path.join(self.output_directory, "pose", "images_bright",
-                                         str(res) + '_' + str(stamp) + ".png")
-                cv2.imwrite(img_fname, final_image)
-
-                ann_fname = os.path.join(self.output_directory, "pose", "annotations",
-                                         str(res) + '_' + str(stamp) + ".txt")
-                pose = np.identity(4)[:3, :]
-                pose[0, 3] = gt_pose[0, 3]
-                pose[1, 3] = 3
-                pose[2, 3] = str(abs(float(gt_pose[2, 3])))  # TODO: check xyz axis
-                print("pose", pose)
-                print("center", center)
-                if pose is not None:
-                    self.save_metadata(center, pose, ann_fname)
-                    with open(os.path.join(self.output_directory, "pose", "train.txt"), 'a') as f:
-                        f.write(str(res) + '_' + str(stamp) + '\n')
-                    print("Saved", label_fname)
-                else:
-                    print("Pose is None")
-
-    def save_metadata(self, center, pose, filename):
-        # pose[:3, :3] = np.identity(3)
-        results = {'center': np.expand_dims(center, 0), 'cls_indexes': [1], 'factor_depth': 1,
-                   'intrinsics_matrix': self.camera_matrix,
-                   'poses': np.expand_dims(pose, 2), 'rotation_translation_matrix': np.identity(4)[:3, :],
-                   'vertmap': np.zeros((0, 0, 3)), 'offset': self.detector.offset}
-        scipy.io.savemat(filename, results, do_compression=False)
 
 
 if __name__ == '__main__':
