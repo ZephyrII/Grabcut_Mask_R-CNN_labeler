@@ -66,14 +66,14 @@ class DetectorNode:
         rospy.init_node('labeler')
         self.scale_factor = 1.0
 
-        self.camera_matrix = np.array([[4996.73451 * self.scale_factor, 0,  2732.95188 * self.scale_factor],
-                                       [0, 4992.93867 * self.scale_factor, 1890.88113 * self.scale_factor],
-                                       [0, 0, 1]])
-        # self.camera_matrix = np.array([[1929.14559 * self.scale_factor, 0, 1924.38974 * self.scale_factor],
-        #                                [0, 1924.07499 * self.scale_factor, 1100.54838 * self.scale_factor],
+        # self.camera_matrix = np.array([[4996.73451 * self.scale_factor, 0,  2732.95188 * self.scale_factor],
+        #                                [0, 4992.93867 * self.scale_factor, 1890.88113 * self.scale_factor],
         #                                [0, 0, 1]])
-        self.camera_distortion = ( -0.11286,   0.11138,   0.00195,   -0.00166,  0.00000)
-        # self.camera_distortion = (-0.25591,	0.0737,	0.00017, -0.00002, 0.0)
+        self.camera_matrix = np.array([[ 5059.93602 * self.scale_factor, 0,  2751.77996 * self.scale_factor],
+                                       [0, 5036.50362 * self.scale_factor, 1884.81144 * self.scale_factor],
+                                       [0, 0, 1]])
+        # self.camera_distortion = ( -0.11286,   0.11138,   0.00195,   -0.00166,  0.00000)
+        self.camera_distortion = ( -0.10264,   0.09112,   0.00075,   -0.00098,  0.00000)
 
         ###     Video File     ###
         # path_to_input = '/root/share/tf/dataset/GoPro_Warsaw/GH010348.MP4'
@@ -83,7 +83,8 @@ class DetectorNode:
         ###     Video File     ###
 
         # "roslaunch pose_from_dgps run.launch & "
-        command = "rosbag play -r 0.3 -s 3 /root/share/tf/dataset/Inea/sliced/11-18-10-58_4.bag"
+        self.rosbag_name = "11-18-10-58_7.bag"
+        command = "rosbag play -r 0.3 -s 0 /root/share/tf/dataset/Inea/sliced/" + self.rosbag_name
         self.bag_process = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
         self.frame_shape = self.get_image_shape()
         self.frame_shape = [int(self.frame_shape[0] * self.scale_factor), int(self.frame_shape[1] * self.scale_factor)]
@@ -217,7 +218,7 @@ class DetectorNode:
         self.image = None
         self.poly = []
         self.keypoints = []
-        self.mask = np.zeros(self.frame_shape[:2], dtype=np.uint8)
+        self.mask = None
         self.toggle_rosbag_play()
         # self.image = self.data_reader.next_frame()
 
@@ -242,14 +243,17 @@ class DetectorNode:
         self.frame_gt = self.gt_pose
         self.frame_imu = self.imu_orientation
         image = cv2.undistort(image, self.camera_matrix, self.camera_distortion)
-        img_yuv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
-        image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
+        # img_yuv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        # img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
+        # image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
         # img_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         # img_hsv[:, :, 2] = cv2.equalizeHist(img_hsv[:, :, 2])
         # image = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
-        self.image = cv2.resize(image, None, fx=self.scale_factor, fy=self.scale_factor)
+        image = cv2.resize(image, None, fx=self.scale_factor, fy=self.scale_factor)
+        self.frame_shape = list(image.shape[:2])
+        self.mask = np.zeros(self.frame_shape[:2], dtype=np.uint8)
+        self.image = image
 
     def detect(self, frame):
         working_copy = np.copy(self.image)
@@ -306,8 +310,9 @@ class DetectorNode:
 
             scaled_kp = (np.array(self.keypoints) / np.array(self.image.shape[:2])) * np.array(resized_image.shape[:2])
             crop_offset = scaled_kp[0] + (scaled_kp[5]-scaled_kp[0])/2 - tuple(x / 2 + random.uniform(-0.2, 0.2)*x for x in self.slice_size)
-            crop_offset = [int(max(min(crop_offset[0], resized_image.shape[1] - self.slice_size[1]), 0)),
-                           int(max(min(crop_offset[1], resized_image.shape[0] - self.slice_size[0]), 0))]
+            crop_offset = [int(max(min(crop_offset[0], resized_image.shape[1] - self.slice_size[0]), 0)),
+                           int(max(min(crop_offset[1], resized_image.shape[0] - self.slice_size[1]), 0))]
+            print("debug:", crop_offset, resized_image.shape, resized_label.shape)
             final_kp = (scaled_kp - crop_offset) / np.array(self.slice_size)
             final_label = resized_label[crop_offset[1]:crop_offset[1] + self.slice_size[1],
                           crop_offset[0]:crop_offset[0] + self.slice_size[0]]
@@ -315,28 +320,23 @@ class DetectorNode:
                           crop_offset[0]:crop_offset[0] + self.slice_size[0]]
 
             mask_coords = np.argwhere(final_label == 1)
-            label_fname = os.path.join(self.output_directory, "labels",
-                                       str(round(res, 2)) + '_' + str(stamp) + "_label.png")
+            label_fname = os.path.join(self.output_directory, "labels", self.rosbag_name[:-4] + '_' + str(stamp) + "_label.png")
             cv2.imwrite(label_fname, final_label)
 
-            img_fname = os.path.join(self.output_directory, "images",
-                                     str(round(res, 2)) + '_' + str(stamp) + ".png")
+            img_fname = os.path.join(self.output_directory, "images",  self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, final_image)
 
-            img_fname = os.path.join(self.output_directory, "full_img",
-                                     str(round(res, 2)) + '_' + str(stamp) + ".png")
+            img_fname = os.path.join(self.output_directory, "full_img",  self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, self.image)
 
             img_yuv = cv2.cvtColor(final_image, cv2.COLOR_BGR2HSV)
             clahe = cv2.createCLAHE(2.0, (8, 8))
             img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
             final_image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
-            img_fname = os.path.join(self.output_directory, "images_bright",
-                                     str(round(res, 2)) + '_' + str(stamp) + ".png")
+            img_fname = os.path.join(self.output_directory, "images_bright",  self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, final_image)
 
-            ann_fname = os.path.join(self.output_directory, "annotations",
-                                     str(round(res, 2)) + '_' + str(stamp) + ".txt")
+            ann_fname = os.path.join(self.output_directory, "annotations",  self.rosbag_name[:-4] + '_' + str(stamp) + ".txt")
             if self.frame_gt is not None:
                 distance = math.sqrt((pow(self.frame_gt.pose.position.x, 2)+pow(self.frame_gt.pose.position.z, 2)))
                 theta = np.arcsin(-2 * (self.frame_gt.pose.orientation.x * self.frame_gt.pose.orientation.z -
@@ -357,6 +357,8 @@ class DetectorNode:
         rel_ymin = np.min(mask_coords[:, 0])
         rel_xmax = np.max(mask_coords[:, 1])
         rel_ymax = np.max(mask_coords[:, 0])
+
+        self.scale_factor = min(self.slice_size[1] / (rel_xmax-rel_xmin) / 2, self.slice_size[0] / (rel_ymax-rel_ymin) / 2)
         xmin = rel_xmin / imgWidth
         ymin = rel_ymin / imgHeigth
         xmax = rel_xmax / imgWidth
@@ -366,7 +368,6 @@ class DetectorNode:
         ET.SubElement(ann, 'filename').text = filename + ".png"
         ET.SubElement(ann, 'path')
         source = ET.SubElement(ann, 'source')
-        ET.SubElement(source, 'database').text = "Unknown"
         size = ET.SubElement(ann, 'size')
         ET.SubElement(size, 'width').text = str(imgWidth)
         ET.SubElement(size, 'height').text = str(imgHeigth)
@@ -376,8 +377,6 @@ class DetectorNode:
         ET.SubElement(ann, 'offset_y').text = str(offset[1])
         object = ET.SubElement(ann, 'object')
         ET.SubElement(object, 'name').text = className
-        ET.SubElement(object, 'truncated').text = "0"
-        ET.SubElement(object, 'difficult').text = "0"
         bndbox = ET.SubElement(object, 'bndbox')
         ET.SubElement(bndbox, 'xmin').text = str(xmin)
         ET.SubElement(bndbox, 'ymin').text = str(ymin)
