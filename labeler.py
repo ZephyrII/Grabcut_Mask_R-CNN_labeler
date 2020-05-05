@@ -9,6 +9,7 @@ import math
 import random
 from pynput import keyboard
 from pynput.keyboard import Key, Controller
+
 try:
     from cv2 import cv2
 except ImportError:
@@ -20,6 +21,7 @@ import scipy.io
 import rospy
 from sensor_msgs.msg import CompressedImage, Imu
 from geometry_msgs.msg import PoseStamped
+from scipy.spatial.transform import Rotation
 
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
@@ -58,42 +60,41 @@ class DetectorNode:
 
     def __init__(self):
         self.SEMI_SUPERVISED = False
-        self.camera_topic = '/blackfly/camera/image_color/compressed'
+        # self.camera_topic = '/blackfly/camera/image_color/compressed'
+        self.camera_topic = '/pointgrey/camera/image_color/compressed'
         # self.camera_topic = '/video_player/compressed'
         self.gt_pose_topic = '/pose_estimator/tomek'
         self.imu_topic = '/xsens/data'
-        self.output_directory = '/root/share/tf/dataset/8_point'
+        self.output_directory = '/root/share/tf/dataset/mask_bottom_kp_4pts/'
         rospy.init_node('labeler')
         self.scale_factor = 1.0
 
-        # self.camera_matrix = np.array([[4996.73451 * self.scale_factor, 0,  2732.95188 * self.scale_factor],
+        # self.camera_matrix = np.array([[4996.73451 * self.scale_factor, 0, 2732.95188 * self.scale_factor],
         #                                [0, 4992.93867 * self.scale_factor, 1890.88113 * self.scale_factor],
         #                                [0, 0, 1]])
-        self.camera_matrix = np.array([[ 5059.93602 * self.scale_factor, 0,  2751.77996 * self.scale_factor],
-                                       [0, 5036.50362 * self.scale_factor, 1884.81144 * self.scale_factor],
-                                       [0, 0, 1]])
-        # self.camera_distortion = ( -0.11286,   0.11138,   0.00195,   -0.00166,  0.00000)
-        self.camera_distortion = ( -0.10264,   0.09112,   0.00075,   -0.00098,  0.00000)
+        # self.camera_matrix = np.array([[ 5059.93602 * self.scale_factor, 0,  2751.77996 * self.scale_factor],
+        #                                [0, 5036.50362 * self.scale_factor, 1884.81144 * self.scale_factor],
+        #                                [0, 0, 1]])
+        self.camera_matrix = np.array([[678.170160908967, 0, 642.472979517798],
+                          [0, 678.4827850057917, 511.0007922166781],
+                          [0, 0, 1]]).astype(np.float64)
+        # self.camera_distortion = (-0.11286, 0.11138, 0.00195, -0.00166, 0.00000)
+        # self.camera_distortion = ( -0.10264,   0.09112,   0.00075,   -0.00098,  0.00000)
+        self.camera_distortion = (-0.030122176488992465, 0.0364118114258211, 0.0012980222478947954, -0.0011189180000975994, 0.0)
 
-        ###     Video File     ###
-        # path_to_input = '/root/share/tf/dataset/GoPro_Warsaw/GH010348.MP4'
-        # self.data_reader = VideoReader(path_to_input, start_frame=1750)
-        # image = self.data_reader.next_frame()
-        # self.image = cv2.undistort(image, self.camera_matrix, self.camera_distortion)
-        ###     Video File     ###
-
-        # "roslaunch pose_from_dgps run.launch & "
-        self.rosbag_name = "11-18-10-58_7.bag"
-        command = "rosbag play -r 0.3 -s 0 /root/share/tf/dataset/Inea/sliced/" + self.rosbag_name
+        # self.rosbag_name = "_2019-11-18-12-11-41.bag"
+        self.rosbag_name = "_2019-11-21-11-21-29_najazd_1.bag"
+        command = "rosbag play -r 0.3 -s 37 /root/share/tf/dataset/Inea/" + self.rosbag_name
+        # command = "rosbag play -r 0.3 -s 27 /root/share/tf/dataset/Inea/interpolated/" + self.rosbag_name
         self.bag_process = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
         self.frame_shape = self.get_image_shape()
         self.frame_shape = [int(self.frame_shape[0] * self.scale_factor), int(self.frame_shape[1] * self.scale_factor)]
 
         ###     SEMI-SUPERVISED     ###
         if self.SEMI_SUPERVISED:
-            path_to_charger_model = os.path.join("/root/share/tf/Mask/model/06_14_rotation", 'frozen_inference_graph.pb')
-            path_to_pole_model = os.path.join("/root/share/tf/Faster/pole/model_A8", 'frozen_inference_graph.pb')
-            self.detector = Detector(path_to_charger_model, path_to_pole_model)
+            path_to_charger_model = "/root/share/tf/Keras/05_04_8_pts"
+            path_to_pole_model = os.path.join("/root/share/tf/Faster/pole/model_Inea_3", 'frozen_inference_graph.pb')
+            self.detector = Detector(path_to_charger_model, path_to_pole_model, self.camera_matrix)
             self.detector.init_size(self.frame_shape)
         ###     SEMI-SUPERVISED     ###
 
@@ -111,13 +112,17 @@ class DetectorNode:
         self.frame_gt = None
         self.frame_time = None
         self.frame_imu = None
+        self.offset = None
+
+        self.last_tvec = np.array([0.0, 0.0, 40.0])
+        self.last_rvec = np.array([0.0, 0.0, 0.0])
 
         if not os.path.exists(os.path.join(self.output_directory, 'full_img')):
             os.makedirs(os.path.join(self.output_directory, 'full_img'))
         if not os.path.exists(os.path.join(self.output_directory, 'images')):
             os.makedirs(os.path.join(self.output_directory, 'images'))
         if not os.path.exists(os.path.join(self.output_directory, 'images_bright')):
-            os.makedirs(os.path.join(self.output_directory,  'images_bright'))
+            os.makedirs(os.path.join(self.output_directory, 'images_bright'))
         if not os.path.exists(os.path.join(self.output_directory, 'labels')):
             os.makedirs(os.path.join(self.output_directory, 'labels'))
         if not os.path.exists(os.path.join(self.output_directory, 'annotations')):
@@ -141,6 +146,35 @@ class DetectorNode:
         return list(image_shape)
         # return list(self.image.shape)
 
+    def calc_PnP_pose(self, imagePoints):
+        # print(np.array(imagePoints).astype(np.int16))
+        if imagePoints is None and len(imagePoints) > 0:
+            return None
+        if len(imagePoints) == 6:
+            PnP_image_points = imagePoints
+            object_points = -np.array(
+                [(0.32, 0.0, -0.65), (0.075, -0.255, -0.65), (-0.075, -0.255, -0.65), (-0.32, 0.0, -0.65),
+                 (-2.80, -0.91, -0.09), (0.1, -0.755, -0.09)]).astype(np.float64)
+
+        PnP_image_points = np.array(PnP_image_points).astype(np.float64)
+        # if self.PnP_pose_data is not None:
+        #     init_guess = np.array(self.PnP_pose_data)
+        # else:
+        #     init_guess = np.array([0.0, 0.5, 30.0])
+        retval, rvec, tvec = cv2.solvePnP(object_points, PnP_image_points, self.camera_matrix, distCoeffs=None,
+                                          # flags=cv2.SOLVEPNP_ITERATIVE)
+                                          tvec=self.last_tvec, rvec=self.last_rvec, flags=cv2.SOLVEPNP_EPNP)
+        # retval, rvec, tvec, inliers = cv2.solvePnPRansac(object_points, PnP_image_points, self.camera_matrix,
+        #                                                  distCoeffs=(-0.11286,   0.11138,   0.00195,   -0.00166))
+        rot = Rotation.from_rotvec(np.squeeze(rvec))
+        # tvec = -tvec
+        # print('TVEC', np.squeeze(tvec), rot.as_euler('xyz') * 180 / 3.14, imagePoints)
+        print(self.image_msg.header.stamp, imagePoints, ",")
+        # print('RVEC', rvec, rot.as_euler('xyz') * 180 / 3.14)
+        self.PnP_pose_data = tvec
+        self.last_tvec = tvec
+        self.last_rvec = rvec
+
     def start(self):
         rospy.Subscriber(self.camera_topic, CompressedImage, self.update_image, queue_size=1)
         rospy.Subscriber(self.gt_pose_topic, PoseStamped, self.update_gt, queue_size=1)
@@ -154,7 +188,7 @@ class DetectorNode:
                     if self.detector.best_detection is not None:
                         k = ord('n')
                     else:
-                        k=ord('s')
+                        k = ord('s')
                 k = cv2.waitKey(0)
                 if self.SEMI_SUPERVISED:
                     if k == ord('n'):
@@ -163,7 +197,7 @@ class DetectorNode:
                 ###     SEMI-SUPERVISED     ###
                 else:
                     if k == ord('a'):
-                        if len(self.keypoints) != 8:
+                        if len(self.keypoints) != 4:
                             print("SELECT KEYPOINTS!", len(self.keypoints))
                             self.keypoints = []
                             cv2.waitKey(0)
@@ -171,12 +205,38 @@ class DetectorNode:
                         self.save_all(100)
                         self.SEMI_SUPERVISED = True
                     if k == ord('n'):
-                        if len(self.keypoints) != 8:
-                            print("SELECT KEYPOINTS!", len(self.keypoints))
-                            self.keypoints = []
-                            cv2.waitKey(0)
-                            continue
-                        self.save_all(100)
+                        # if len(self.keypoints) != 8:
+                        #     print("SELECT KEYPOINTS!", len(self.keypoints))
+                        #     self.keypoints = []
+                        #     cv2.waitKey(0)
+                        #     continue
+
+                        # kp = self.keypoints# [self.keypoints[0], self.keypoints[1], self.keypoints[2], self.keypoints[3],
+                        #       self.keypoints[5], self.keypoints[6]]
+                        # print(self.image_msg.header.stamp, kp, ",")
+                        #
+                        # self.image = None
+                        # self.poly = []
+                        # self.keypoints = []
+                        # self.mask = None
+                        # self.toggle_rosbag_play() # TODO:Comment
+                        self.save_all(100)  # TODO:Uncomment
+                    # if k == ord('t'):
+                    #     if len(self.keypoints) != 4:
+                    #         print("SELECT KEYPOINTS!", len(self.keypoints))
+                    #         self.keypoints = []
+                    #         cv2.waitKey(0)
+                    #         continue
+                    #
+                    #     print(self.image_msg.header.stamp, self.keypoints, ",")
+                    #     kp = [self.keypoints[0], self.keypoints[1], self.keypoints[2], self.keypoints[3],
+                    #           self.keypoints[5], self.keypoints[6]]
+                    #     # self.calc_PnP_pose(kp)
+                    #     self.image = None
+                    #     self.poly = []
+                    #     self.keypoints = []
+                    #     self.mask = None
+                    #     self.toggle_rosbag_play()
                 if k == ord('s'):
                     self.image = None
                     self.toggle_rosbag_play()
@@ -190,14 +250,14 @@ class DetectorNode:
                     self.bag_process.send_signal(signal.SIGINT)
                     exit(0)
             # else:
-                # self.toggle_rosbag_play()
-                # image = self.data_reader.next_frame()
-                # self.image = cv2.undistort(image, self.camera_matrix, self.camera_distortion)
+            # self.toggle_rosbag_play()
+            # image = self.data_reader.next_frame()
+            # self.image = cv2.undistort(image, self.camera_matrix, self.camera_distortion)
 
-                # img_yuv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-                # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                # img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
-                # self.image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
+            # img_yuv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            # img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
+            # self.image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
         rospy.spin()
 
     def save_all(self, score=None):
@@ -250,7 +310,7 @@ class DetectorNode:
         # img_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         # img_hsv[:, :, 2] = cv2.equalizeHist(img_hsv[:, :, 2])
         # image = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
-        image = cv2.resize(image, None, fx=self.scale_factor, fy=self.scale_factor)
+        # image = cv2.resize(image, None, fx=self.scale_factor, fy=self.scale_factor)
         self.frame_shape = list(image.shape[:2])
         self.mask = np.zeros(self.frame_shape[:2], dtype=np.uint8)
         self.image = image
@@ -258,6 +318,7 @@ class DetectorNode:
     def detect(self, frame):
         working_copy = np.copy(self.image)
         disp = np.copy(self.image)
+        self.offset = self.detector.offset
         self.detector.detect(working_copy)
         if self.detector.best_detection is not None:
             # print("GT:", self.gt_mat)
@@ -270,7 +331,9 @@ class DetectorNode:
 
             x1, y1, x2, y2 = self.detector.best_detection['abs_rect']
             self.mask = np.zeros(self.image.shape[:2], np.uint8)
-            self.mask[y1:y2, x1:x2] = np.where(self.detector.mask_reshaped > 0.5, 1, 0) #, cv2.COLOR_GRAY2BGR)
+            self.mask[self.offset[0]:self.offset[0] + self.slice_size[1],
+            self.offset[1]:self.offset[1] + self.slice_size[0]] = np.where(self.detector.mask_reshaped > 0.5, 1,
+                                                                           0)  # , cv2.COLOR_GRAY2BGR)
 
             self.show_mask(disp)
 
@@ -292,16 +355,15 @@ class DetectorNode:
             if len(self.poly) > 2:
                 self.mask = np.zeros(self.image.shape[:2], np.uint8)
                 cv2.fillPoly(self.mask, np.array(self.poly, dtype=np.int32)[np.newaxis, :, :], 1)
-            if len(self.poly) < 5 or len(self.poly)==6 or len(self.poly)==9 or len(self.poly)==10 or len(self.poly)>11:
+            if len(self.poly) == 1 or len(self.poly) == 4 or len(self.poly) == 5 or len(self.poly) == 10:
                 self.keypoints.append((x, y))
             self.show_mask()
 
     def save_mask(self, stamp, mask, score):
         if mask is not None:
             res = 1
-            if abs(self.keypoints[0][0]-self.keypoints[5][0])>self.slice_size[0]/2:
-                res = self.slice_size[0]/2/abs(self.keypoints[0][0]-self.keypoints[5][0])
-
+            if abs(self.keypoints[0][0] - self.keypoints[1][0]) > self.slice_size[0] / 2:                               #change to #change to scaled_kp[5] in 8-point[5][0] in 8-point
+                res = self.slice_size[0] / 2 / abs(self.keypoints[0][0] - self.keypoints[5][0])
 
             label_mask = np.copy(mask)
             image = np.copy(self.image)
@@ -309,10 +371,11 @@ class DetectorNode:
             resized_image = cv2.resize(image, None, fx=res, fy=res)
 
             scaled_kp = (np.array(self.keypoints) / np.array(self.image.shape[:2])) * np.array(resized_image.shape[:2])
-            crop_offset = scaled_kp[0] + (scaled_kp[5]-scaled_kp[0])/2 - tuple(x / 2 + random.uniform(-0.2, 0.2)*x for x in self.slice_size)
+            crop_offset = scaled_kp[0] + (scaled_kp[1] - scaled_kp[0]) / 2 - tuple(                                     #change to scaled_kp[5] in 8-point
+                x / 2 + random.uniform(-0.2, 0.2) * x for x in self.slice_size)
             crop_offset = [int(max(min(crop_offset[0], resized_image.shape[1] - self.slice_size[0]), 0)),
                            int(max(min(crop_offset[1], resized_image.shape[0] - self.slice_size[1]), 0))]
-            print("debug:", crop_offset, resized_image.shape, resized_label.shape)
+            # print("debug:", crop_offset, resized_image.shape, resized_label.shape)
             final_kp = (scaled_kp - crop_offset) / np.array(self.slice_size)
             final_label = resized_label[crop_offset[1]:crop_offset[1] + self.slice_size[1],
                           crop_offset[0]:crop_offset[0] + self.slice_size[0]]
@@ -320,25 +383,29 @@ class DetectorNode:
                           crop_offset[0]:crop_offset[0] + self.slice_size[0]]
 
             mask_coords = np.argwhere(final_label == 1)
-            label_fname = os.path.join(self.output_directory, "labels", self.rosbag_name[:-4] + '_' + str(stamp) + "_label.png")
+            label_fname = os.path.join(self.output_directory, "labels",
+                                       self.rosbag_name[:-4] + '_' + str(stamp) + "_label.png")
             cv2.imwrite(label_fname, final_label)
 
-            img_fname = os.path.join(self.output_directory, "images",  self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
+            img_fname = os.path.join(self.output_directory, "images", self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, final_image)
 
-            img_fname = os.path.join(self.output_directory, "full_img",  self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
+            img_fname = os.path.join(self.output_directory, "full_img",
+                                     self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, self.image)
 
             img_yuv = cv2.cvtColor(final_image, cv2.COLOR_BGR2HSV)
             clahe = cv2.createCLAHE(2.0, (8, 8))
             img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
             final_image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
-            img_fname = os.path.join(self.output_directory, "images_bright",  self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
+            img_fname = os.path.join(self.output_directory, "images_bright",
+                                     self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, final_image)
 
-            ann_fname = os.path.join(self.output_directory, "annotations",  self.rosbag_name[:-4] + '_' + str(stamp) + ".txt")
+            ann_fname = os.path.join(self.output_directory, "annotations",
+                                     self.rosbag_name[:-4] + '_' + str(stamp) + ".txt")
             if self.frame_gt is not None:
-                distance = math.sqrt((pow(self.frame_gt.pose.position.x, 2)+pow(self.frame_gt.pose.position.z, 2)))
+                distance = math.sqrt((pow(self.frame_gt.pose.position.x, 2) + pow(self.frame_gt.pose.position.z, 2)))
                 theta = np.arcsin(-2 * (self.frame_gt.pose.orientation.x * self.frame_gt.pose.orientation.z -
                                         self.frame_gt.pose.orientation.w * self.frame_gt.pose.orientation.y))
                 print(theta)
@@ -350,15 +417,17 @@ class DetectorNode:
                 f.write(self.makeXml(mask_coords, final_kp, "charger", final_image.shape[1], final_image.shape[0],
                                      ann_fname, distance, score, crop_offset, theta, res))
 
-            print("Saved", label_fname)
+            # print("Saved", label_fname)
 
-    def makeXml(self, mask_coords, keypoints_list, className, imgWidth, imgHeigth, filename, distance, score, offset, theta, res): # TODO:
+    def makeXml(self, mask_coords, keypoints_list, className, imgWidth, imgHeigth, filename, distance, score, offset,
+                theta, res):  # TODO:
         rel_xmin = np.min(mask_coords[:, 1])
         rel_ymin = np.min(mask_coords[:, 0])
         rel_xmax = np.max(mask_coords[:, 1])
         rel_ymax = np.max(mask_coords[:, 0])
 
-        self.scale_factor = min(self.slice_size[1] / (rel_xmax-rel_xmin) / 2, self.slice_size[0] / (rel_ymax-rel_ymin) / 2)
+        self.scale_factor = min(self.slice_size[1] / (rel_xmax - rel_xmin) / 2,
+                                self.slice_size[0] / (rel_ymax - rel_ymin) / 2)
         xmin = rel_xmin / imgWidth
         ymin = rel_ymin / imgHeigth
         xmax = rel_xmax / imgWidth
@@ -432,7 +501,7 @@ class DetectorNode:
 
                 scaled_kp = (np.array(self.keypoints) / np.array(self.image.shape[:2])) * np.array(
                     resized_image.shape[:2])
-                crop_offset = scaled_kp[0] - tuple(x / 2 for x in self.slice_size)  #TODO: SLICE SIZE FORMAT MODIFIED!!
+                crop_offset = scaled_kp[0] - tuple(x / 2 for x in self.slice_size)  # TODO: SLICE SIZE FORMAT MODIFIED!!
                 crop_offset = [int(max(min(crop_offset[0], resized_image.shape[1] - self.slice_size[0]), 0)),
                                int(max(min(crop_offset[1], resized_image.shape[0] - self.slice_size[1]), 0))]
                 final_kp = scaled_kp - crop_offset
