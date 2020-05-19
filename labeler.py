@@ -65,7 +65,7 @@ class DetectorNode:
         # self.camera_topic = '/video_player/compressed'
         self.gt_pose_topic = '/pose_estimator/tomek'
         self.imu_topic = '/xsens/data'
-        self.output_directory = '/root/share/tf/dataset/mask_bottom_kp_4pts/'
+        self.output_directory = '/root/share/tf/dataset/mask_bottom_kp_4pts'
         rospy.init_node('labeler')
         self.scale_factor = 1.0
 
@@ -83,8 +83,8 @@ class DetectorNode:
         self.camera_distortion = (-0.030122176488992465, 0.0364118114258211, 0.0012980222478947954, -0.0011189180000975994, 0.0)
 
         # self.rosbag_name = "_2019-11-18-12-11-41.bag"
-        self.rosbag_name = "_2019-11-21-11-21-29_najazd_1.bag"
-        command = "rosbag play -r 0.3 -s 37 /root/share/tf/dataset/Inea/" + self.rosbag_name
+        self.rosbag_name = "_2020-05-13-14-09-54.bag"
+        command = "rosbag play -r 0.3 -s 0 /root/share/tf/dataset/PP/" + self.rosbag_name
         # command = "rosbag play -r 0.3 -s 27 /root/share/tf/dataset/Inea/interpolated/" + self.rosbag_name
         self.bag_process = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
         self.frame_shape = self.get_image_shape()
@@ -360,6 +360,7 @@ class DetectorNode:
             self.show_mask()
 
     def save_mask(self, stamp, mask, score):
+        # print(self.keypoints)
         if mask is not None:
             res = 1
             if abs(self.keypoints[0][0] - self.keypoints[1][0]) > self.slice_size[0] / 2:                               #change to #change to scaled_kp[5] in 8-point[5][0] in 8-point
@@ -384,14 +385,14 @@ class DetectorNode:
 
             mask_coords = np.argwhere(final_label == 1)
             label_fname = os.path.join(self.output_directory, "labels",
-                                       self.rosbag_name[:-4] + '_' + str(stamp) + "_label.png")
+                                       'PP_' + self.rosbag_name[:-4] + '_' + str(stamp) + "_label.png")
             cv2.imwrite(label_fname, final_label)
 
-            img_fname = os.path.join(self.output_directory, "images", self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
+            img_fname = os.path.join(self.output_directory, "images", 'PP_' + self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, final_image)
 
             img_fname = os.path.join(self.output_directory, "full_img",
-                                     self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
+                                     'PP_' + self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, self.image)
 
             img_yuv = cv2.cvtColor(final_image, cv2.COLOR_BGR2HSV)
@@ -399,11 +400,11 @@ class DetectorNode:
             img_yuv[:, :, 2] = clahe.apply(img_yuv[:, :, 2])
             final_image = cv2.cvtColor(img_yuv, cv2.COLOR_HSV2BGR)
             img_fname = os.path.join(self.output_directory, "images_bright",
-                                     self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
+                                     'PP_' + self.rosbag_name[:-4] + '_' + str(stamp) + ".png")
             cv2.imwrite(img_fname, final_image)
 
             ann_fname = os.path.join(self.output_directory, "annotations",
-                                     self.rosbag_name[:-4] + '_' + str(stamp) + ".txt")
+                                     'PP_' + self.rosbag_name[:-4] + '_' + str(stamp) + ".txt")
             if self.frame_gt is not None:
                 distance = math.sqrt((pow(self.frame_gt.pose.position.x, 2) + pow(self.frame_gt.pose.position.z, 2)))
                 theta = np.arcsin(-2 * (self.frame_gt.pose.orientation.x * self.frame_gt.pose.orientation.z -
@@ -420,7 +421,7 @@ class DetectorNode:
             # print("Saved", label_fname)
 
     def makeXml(self, mask_coords, keypoints_list, className, imgWidth, imgHeigth, filename, distance, score, offset,
-                theta, res):  # TODO:
+                theta, res):
         rel_xmin = np.min(mask_coords[:, 1])
         rel_ymin = np.min(mask_coords[:, 0])
         rel_xmax = np.max(mask_coords[:, 1])
@@ -478,17 +479,17 @@ class DetectorNode:
             ET.SubElement(orientation_node, 'x').text = str(self.frame_imu.x)
             ET.SubElement(orientation_node, 'y').text = str(self.frame_imu.y)
             ET.SubElement(orientation_node, 'z').text = str(self.frame_imu.z)
-        camera_matrix_node = ET.SubElement(object, 'camera_matrix')
-        ET.SubElement(camera_matrix_node, 'fx').text = str(self.camera_matrix[0, 0])
-        ET.SubElement(camera_matrix_node, 'fy').text = str(self.camera_matrix[1, 1])
-        ET.SubElement(camera_matrix_node, 'cx').text = str(self.camera_matrix[0, 2])
-        ET.SubElement(camera_matrix_node, 'cy').text = str(self.camera_matrix[1, 2])
-        camera_distorsion_node = ET.SubElement(object, 'camera_distorsion')
-        ET.SubElement(camera_distorsion_node, 'kc1').text = str(self.camera_distortion[0])
-        ET.SubElement(camera_distorsion_node, 'kc2').text = str(self.camera_distortion[1])
-        ET.SubElement(camera_distorsion_node, 'kc3').text = str(self.camera_distortion[2])
-        ET.SubElement(camera_distorsion_node, 'kc4').text = str(self.camera_distortion[3])
-        ET.SubElement(camera_distorsion_node, 'kc5').text = str(self.camera_distortion[4])
+        # camera_matrix_node = ET.SubElement(object, 'camera_matrix')
+        # ET.SubElement(camera_matrix_node, 'fx').text = str(self.camera_matrix[0, 0])
+        # ET.SubElement(camera_matrix_node, 'fy').text = str(self.camera_matrix[1, 1])
+        # ET.SubElement(camera_matrix_node, 'cx').text = str(self.camera_matrix[0, 2])
+        # ET.SubElement(camera_matrix_node, 'cy').text = str(self.camera_matrix[1, 2])
+        # camera_distorsion_node = ET.SubElement(object, 'camera_distorsion')
+        # ET.SubElement(camera_distorsion_node, 'kc1').text = str(self.camera_distortion[0])
+        # ET.SubElement(camera_distorsion_node, 'kc2').text = str(self.camera_distortion[1])
+        # ET.SubElement(camera_distorsion_node, 'kc3').text = str(self.camera_distortion[2])
+        # ET.SubElement(camera_distorsion_node, 'kc4').text = str(self.camera_distortion[3])
+        # ET.SubElement(camera_distorsion_node, 'kc5').text = str(self.camera_distortion[4])
         return ET.tostring(ann, encoding='unicode', method='xml')
 
     def save_poseCNN(self, stamp, mask, gt_pose):
