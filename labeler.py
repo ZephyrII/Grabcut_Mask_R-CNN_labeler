@@ -131,8 +131,7 @@ class DetectorNode:
 
     def save_all(self, score=None):
         if self.frame_gt is not None:
-            self.save_mask(self.frame_time, self.mask, score, self.frame_gt)
-            # self.save_poseCNN(self.frame_time, self.mask, self.frame_gt)
+            self.save_mask(self.frame_time, self.mask, score)
         else:
             self.save_mask(self.image_reader.frame_no, self.mask, score)
         self.image = None
