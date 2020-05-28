@@ -351,6 +351,9 @@ class DetectorNode:
 
     def video_click(self, e, x, y, flags, param):
         if e == cv2.EVENT_LBUTTONDOWN:
+            if len(self.poly)==12:
+                self.keypoints.append((x, y))
+                return
             self.poly.append([x, y])
             if len(self.poly) > 2:
                 self.mask = np.zeros(self.image.shape[:2], np.uint8)
@@ -363,7 +366,7 @@ class DetectorNode:
         # print(self.keypoints)
         if mask is not None:
             res = 1
-            if abs(self.keypoints[0][0] - self.keypoints[1][0]) > self.slice_size[0] / 2:                               #change to #change to scaled_kp[5] in 8-point[5][0] in 8-point
+            if abs(self.keypoints[0][0] - self.keypoints[5][0]) > self.slice_size[0] / 2:                               # change to scaled_kp[5] in 8-point[5][0] in 8-point
                 res = self.slice_size[0] / 2 / abs(self.keypoints[0][0] - self.keypoints[5][0])
 
             label_mask = np.copy(mask)
@@ -372,8 +375,8 @@ class DetectorNode:
             resized_image = cv2.resize(image, None, fx=res, fy=res)
 
             scaled_kp = (np.array(self.keypoints) / np.array(self.image.shape[:2])) * np.array(resized_image.shape[:2])
-            crop_offset = scaled_kp[0] + (scaled_kp[1] - scaled_kp[0]) / 2 - tuple(                                     #change to scaled_kp[5] in 8-point
-                x / 2 + random.uniform(-0.2, 0.2) * x for x in self.slice_size)
+            crop_offset = scaled_kp[0] + (scaled_kp[5] - scaled_kp[0]) / 2 - tuple(                                     # change to scaled_kp[5] in 8-point
+                x / 2 + random.uniform(-0.1, 0.1) * x for x in self.slice_size)
             crop_offset = [int(max(min(crop_offset[0], resized_image.shape[1] - self.slice_size[0]), 0)),
                            int(max(min(crop_offset[1], resized_image.shape[0] - self.slice_size[1]), 0))]
             # print("debug:", crop_offset, resized_image.shape, resized_label.shape)
