@@ -55,14 +55,9 @@ class ImageReader:
 class DetectorNode:
 
     def __init__(self):
-        self.SEMI_SUPERVISED = False
-        # self.camera_topic = '/blackfly/camera/image_color/compressed'
-        self.camera_topic = '/pointgrey/camera/image_color/compressed'
-        # self.camera_topic = '/video_player/compressed'
-        self.gt_pose_topic = '/pose_estimator/tomek'
-        self.imu_topic = '/xsens/data'
-        self.output_directory = '/root/share/tf/dataset/mask_bottom_kp_4pts'
-        rospy.init_node('labeler')
+        self.rosbag_name = "name.bag"  # TODO: CHANGE NAME
+        self.image_reader = ImageReader("/root/share/tf/dataset/8_point/full_img", equalize_histogram=False, start_frame=0)  # TODO: CHANGE PATH
+        self.output_directory = '/root/share/tf/dataset/7_point'  # TODO: CHANGE PATH
         self.scale_factor = 1.0
         self.camera_matrix = np.array([[5059.93602 * self.scale_factor, 0,  2751.77996 * self.scale_factor],
                                        [0, 5036.50362 * self.scale_factor, 1884.81144 * self.scale_factor],
