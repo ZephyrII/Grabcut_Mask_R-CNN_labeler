@@ -32,7 +32,7 @@ class DetectorNode:
         self.camera_topic = '/blackfly/camera/image_color/compressed'
         self.gt_pose_topic = '/pose_estimator/tomek'
         self.imu_topic = '/xsens/data'
-        self.output_directory = '/root/share/tf/dataset/4_point/'
+        self.output_directory = '/root/share/tf/dataset/landmarks/'
         rospy.init_node('labeler')
 
         self.camera_matrix = np.array([[4885.3110509, 0, 2685.5111516],
@@ -40,8 +40,9 @@ class DetectorNode:
                                                 [0, 0, 1]]).astype(np.float64)
         self.camera_distortion = (-0.14178835, 0.09305661, 0.00205776, -0.00133743, 0.0)
 
-        self.rosbag_name = "_2020-05-27-13-10-46.bag" #54-80 skipped
-        command = "rosbag play -r 0.3 -s 12 /root/share/tf/dataset/5_point_new/" + self.rosbag_name
+        # self.rosbag_name = "_2020-05-27-13-10-46.bag" #54-80 skipped
+        self.rosbag_name = "2020-08-06-10-26-39.bag" #54-80 skipped
+        command = "rosbag play -r 0.3 -s 0 /root/share/tf/dataset/landmarks/" + self.rosbag_name
         self.bag_process = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True)
         self.frame_shape = self.get_image_shape()
 
@@ -69,8 +70,6 @@ class DetectorNode:
             os.makedirs(os.path.join(self.output_directory, 'full_img'))
         if not os.path.exists(os.path.join(self.output_directory, 'images')):
             os.makedirs(os.path.join(self.output_directory, 'images'))
-        if not os.path.exists(os.path.join(self.output_directory, 'labels')):
-            os.makedirs(os.path.join(self.output_directory, 'labels'))
         if not os.path.exists(os.path.join(self.output_directory, 'annotations')):
             os.makedirs(os.path.join(self.output_directory, 'annotations'))
         if not os.path.exists(os.path.join(self.output_directory, 'annotations_full')):
@@ -97,6 +96,9 @@ class DetectorNode:
                 self.show_mask()
                 k = cv2.waitKey(0)
                 if k == ord('n'):
+                    if len(self.poly)!=11:
+                        print("select 11 points!")
+                        continue
                     # self.calc_PnP_pose(self.keypoints, self.camera_matrix)
                     self.save_all(100)
                 if k == ord('s'):
@@ -110,6 +112,7 @@ class DetectorNode:
                     self.SEMI_SUPERVISED = False
                 if k == ord('u'):
                     self.keypoints.pop()
+                    self.poly.pop()
                 if k == ord('q'):
                     self.bag_process.send_signal(signal.SIGINT)
                     exit(0)
@@ -166,6 +169,12 @@ class DetectorNode:
 
     def video_click(self, e, x, y, flags, param):
         if e == cv2.EVENT_LBUTTONDOWN:
+            if len(self.keypoints) >=9:
+                self.poly.append([x, y])
+                cv2.fillPoly(self.mask, np.array(self.poly, dtype=np.int32)[np.newaxis, :, :], 1)
+                return
+
+            #     self.mask = np.zeros(self.image.shape[:2], np.uint8)
             ws = 150
             slice = self.image[y-ws:y+ws, x-ws:x+ws]
             mask = np.zeros(slice.shape[:-1], np.uint8)
@@ -194,22 +203,19 @@ class DetectorNode:
             # cv2.circle(self.image, (cX, cY), 1, (100, 255, 255), -1)
             self.poly.append([cX, cY])
             self.keypoints.append((cX, cY))
-            # if len(self.poly) > 2:
-            #     self.mask = np.zeros(self.image.shape[:2], np.uint8)
-            #     cv2.fillPoly(self.mask, np.array(self.poly, dtype=np.int32)[np.newaxis, :, :], 1)
             self.show_mask()
 
     def save_mask(self, stamp, mask, score):
         if mask is not None:
             res = 1.0
-            if abs(self.keypoints[0][0] - self.keypoints[2][0]) > self.slice_size[0] / 2:  #TODO: verify keypoints on corners
-                res = self.slice_size[0] / 2 / abs(self.keypoints[0][0] - self.keypoints[2][0])
+            if abs(self.keypoints[0][1] - self.keypoints[8][1]) > self.slice_size[1] / 2:  #TODO: verify keypoints on corners
+                res = self.slice_size[1] / 2 / abs(self.keypoints[0][1] - self.keypoints[8][1])
                 # print(res)
             label_mask = np.copy(mask)
             image = np.copy(self.image)
-            if label_mask.shape[0]*res < self.slice_size[0] or label_mask.shape[1]*res < self.slice_size[1]:
-                res = self.slice_size[0]/label_mask.shape[0]
-                print("res", res)
+            # if label_mask.shape[0]*res < self.slice_size[0] or label_mask.shape[1]*res < self.slice_size[1]:
+            #     res = self.slice_size[0]/label_mask.shape[0]
+            #     print("res", res)
             # if cv2.resize(label_mask, None, fx=res, fy=res).shape[0] < self.slice_size[0] or \
             #         cv2.resize(label_mask, None, fx=res, fy=res).shape[1] < self.slice_size[1]:
             #     res = 0.2
