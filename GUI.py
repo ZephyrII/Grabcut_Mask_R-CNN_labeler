@@ -5,6 +5,7 @@ except ImportError:
     pass
 import numpy as np
 import os
+import random
 from ImageReader import ImageReader
 from VideoReader import VideoReader
 
@@ -109,16 +110,41 @@ class GUI:
                 self.show_mask()
 
     def save(self):
-        img_fname = os.path.join(self.output_directory, "images", self.data_reader.fname[:-4] + ".png")
-        cv2.imwrite(img_fname, self.frame)
-        mask_coords = (self.offset[0]-self.box[0], self.offset[1]-self.box[1], self.offset[0], self.offset[1])
-        row = img_fname+" "+",".join(map(str, mask_coords))+",0\n"
-        print(row)
+
+        for i in range(20):
+            zoom = np.random.uniform(1.0, 1.5)
+            mask_coords = (np.array([self.offset[0]-self.box[0], self.offset[1]-self.box[1], self.offset[0], self.offset[1]])*zoom).astype(np.uint32)
+            out_frame = cv2.resize(self.frame, (0,0), fx=zoom, fy=zoom)
+            center = (np.min([np.max([mask_coords[0]+(mask_coords[2]-mask_coords[0])/2, self.slice_size[0]/2]), self.slice_size[0]*zoom-self.slice_size[0]/2]),
+                      np.min([np.max([mask_coords[1]+(mask_coords[3]-mask_coords[1])/2, self.slice_size[1]/2]), self.slice_size[1]*zoom-self.slice_size[1]/2]))
+            out_frame = out_frame[int(center[1]-self.slice_size[1]/2):int(center[1]+self.slice_size[1]/2),
+                                  int(center[0]-self.slice_size[0]/2):int(center[0]+self.slice_size[0]/2)]
+            crop_offset = np.array([int(center[1]-self.slice_size[1]/2), int(center[0]-self.slice_size[0]/2)]).astype(np.uint32)
+            mask_coords = [mask_coords[0]-crop_offset[1], mask_coords[1]-crop_offset[0],
+                           mask_coords[2]-crop_offset[1], mask_coords[3]-crop_offset[0]]
+            # out_frame = out_frame[np.max([0, int(center[1]-self.slice_size[1]/2)]):np.min([int(center[1]+self.slice_size[1]/2), int(self.slice_size[1]*zoom)]),
+            #                       np.max([0, int(center[0]-self.slice_size[0]/2)]):np.min([int(center[0]+self.slice_size[0]/2), int(self.slice_size[1]*zoom)])]
+            print("center", center, out_frame.shape)
+
+            # Brightness:
+            alpha = np.random.uniform(1.5, 0.7)
+            beta = np.random.uniform(-20, 20)
+            print("alpha, beta", alpha, beta, out_frame.dtype)
+            out_frame = np.clip(alpha * out_frame + beta, 0, 255)
+
+            img_fname = os.path.join(self.output_directory, "images", self.data_reader.fname[:-4] + "_" + str(i) + ".png")
+            # print((mask_coords[0], mask_coords[1]))
+            # cv2.rectangle(out_frame, (mask_coords[0], mask_coords[1]), (mask_coords[2], mask_coords[3]), (255, 0, 0), 10)
+            # cv2.imshow("lol", out_frame/255)
+            # cv2.waitKey(0)
+            row = img_fname+" "+",".join(map(str, mask_coords))+",0\n"
+            print(row)
 
 
-        ann_fname = os.path.join(self.output_directory, "annotations.txt")
-        with open(ann_fname, 'a') as f:
-            f.write(row)
+            ann_fname = os.path.join(self.output_directory, "annotations.txt")
+            with open(ann_fname, 'a') as f:
+                f.write(row)
+            cv2.imwrite(img_fname, out_frame)
 
-        print("Saved", img_fname)
+            print("Saved", img_fname)
 

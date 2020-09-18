@@ -18,5 +18,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # path_to_model = os.path.join("/root/share/tf/Mask/model/4_07/all/", 'frozen_inference_graph.pb')
-    gui = GUI(args.output_directory, "/root/share/tf/dataset/4_point/full_img")
+    gui = GUI(args.output_directory, "/root/share/tf/dataset/pole_box/raw_images")
     gui.run_video()
