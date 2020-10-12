@@ -111,7 +111,7 @@ class GUI:
 
     def save(self):
 
-        for i in range(20):
+        for i in range(10):
             zoom = np.random.uniform(1.0, 1.5)
             mask_coords = (np.array([self.offset[0]-self.box[0], self.offset[1]-self.box[1], self.offset[0], self.offset[1]])*zoom).astype(np.uint32)
             out_frame = cv2.resize(self.frame, (0,0), fx=zoom, fy=zoom)
@@ -132,7 +132,7 @@ class GUI:
             print("alpha, beta", alpha, beta, out_frame.dtype)
             out_frame = np.clip(alpha * out_frame + beta, 0, 255)
 
-            img_fname = os.path.join(self.output_directory, "images", self.data_reader.fname[:-4] + "_" + str(i) + ".png")
+            img_fname = os.path.join(self.output_directory, "images", "2020-06-04-11-45-03_"+self.data_reader.fname[:-4] + "_" + str(i) + ".png")
             # print((mask_coords[0], mask_coords[1]))
             # cv2.rectangle(out_frame, (mask_coords[0], mask_coords[1]), (mask_coords[2], mask_coords[3]), (255, 0, 0), 10)
             # cv2.imshow("lol", out_frame/255)
